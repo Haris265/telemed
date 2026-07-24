@@ -110,10 +110,15 @@ class DoctorListView(generics.ListAPIView):
         return qs.distinct()
 
 
-class DoctorDetailView(generics.RetrieveUpdateAPIView):
+class DoctorDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAdmin]
     serializer_class = DoctorProfileSerializer
     queryset = DoctorProfile.objects.select_related("user").prefetch_related("specialities")
+
+    def perform_destroy(self, instance):
+        # Cascade removes DoctorProfile via OneToOne; drop login account too.
+        user = instance.user
+        user.delete()
 
 
 class DoctorAvailabilityListCreateView(generics.ListCreateAPIView):

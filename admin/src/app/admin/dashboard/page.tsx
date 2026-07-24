@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
-  Activity,
   CalendarDays,
   Sparkles,
   Stethoscope,
@@ -54,7 +53,7 @@ export default function DashboardPage() {
       value: stats?.total_appointments,
       icon: CalendarDays,
       gradient: "from-cyan-500 to-teal-600",
-      href: "/admin/appointments",
+      href: null as string | null,
     },
   ];
 
@@ -77,10 +76,6 @@ export default function DashboardPage() {
               Track doctors, WhatsApp patients, and appointments across your Telemed network.
             </p>
           </div>
-          <div className="flex items-center gap-2 rounded-2xl border border-sky-400/20 bg-sky-500/10 px-3 py-2 text-xs font-medium text-sky-200">
-            <Activity size={14} className="text-sky-300" />
-            Dynamic · API-backed
-          </div>
         </div>
       </Card>
 
@@ -95,24 +90,28 @@ export default function DashboardPage() {
           ? [1, 2, 3].map((i) => <Skeleton key={i} className="h-32" />)
           : cards.map((card, i) => {
               const Icon = card.icon;
-              return (
-                <Link
-                  key={card.label}
-                  href={card.href}
-                  className={`premium-card premium-hover-lift animate-fade-in-up stagger-${i + 1} block rounded-3xl p-5 no-underline`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm text-slate-400">{card.label}</p>
-                      <p className="mt-2 text-3xl font-bold text-slate-50">{card.value ?? 0}</p>
-                    </div>
-                    <div
-                      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-b ${card.gradient} text-white depth-raised`}
-                    >
-                      <Icon size={20} className="text-white" strokeWidth={2.25} />
-                    </div>
+              const body = (
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm text-slate-400">{card.label}</p>
+                    <p className="mt-2 text-3xl font-bold text-slate-50">{card.value ?? 0}</p>
                   </div>
+                  <div
+                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-b ${card.gradient} text-white depth-raised`}
+                  >
+                    <Icon size={20} className="text-white" strokeWidth={2.25} />
+                  </div>
+                </div>
+              );
+              const className = `premium-card premium-hover-lift animate-fade-in-up stagger-${i + 1} block rounded-3xl p-5 no-underline`;
+              return card.href ? (
+                <Link key={card.label} href={card.href} className={className}>
+                  {body}
                 </Link>
+              ) : (
+                <div key={card.label} className={className}>
+                  {body}
+                </div>
               );
             })}
       </div>

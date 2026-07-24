@@ -69,6 +69,11 @@ class DoctorOnboardingSerializer(serializers.Serializer):
 class DoctorProfileSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(source="user.email", read_only=True)
     specialities = SpecialitySerializer(many=True, read_only=True)
+    speciality_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        write_only=True,
+        required=False,
+    )
     full_name = serializers.CharField(read_only=True)
 
     class Meta:
@@ -80,11 +85,27 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
             "full_name",
             "email",
             "specialities",
+            "speciality_ids",
             "session_time",
             "is_active",
             "created_at",
         )
         read_only_fields = ("created_at",)
+
+    def validate_speciality_ids(self, value):
+        if not value:
+            raise serializers.ValidationError("Select at least one speciality.")
+        existing = set(Speciality.objects.filter(id__in=value).values_list("id", flat=True))
+        if existing != set(value):
+            raise serializers.ValidationError("One or more specialities are invalid.")
+        return list(existing)
+
+    def update(self, instance, validated_data):
+        speciality_ids = validated_data.pop("speciality_ids", None)
+        instance = super().update(instance, validated_data)
+        if speciality_ids is not None:
+            instance.specialities.set(speciality_ids)
+        return instance
 
 
 class DoctorAvailabilitySerializer(serializers.ModelSerializer):

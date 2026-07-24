@@ -4,12 +4,10 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, useEffect, useState } from "react";
 import {
-  CalendarDays,
   LayoutDashboard,
   LogOut,
   Menu,
   Stethoscope,
-  UserPlus,
   Users,
   X,
   HeartPulse,
@@ -22,9 +20,7 @@ const NAV = [
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/specialities", label: "Specialities", icon: HeartPulse },
   { href: "/admin/doctors", label: "Doctors", icon: Stethoscope },
-  { href: "/admin/doctors/onboarding", label: "Onboarding", icon: UserPlus },
   { href: "/admin/patients", label: "Patients", icon: Users },
-  { href: "/admin/appointments", label: "Appointments", icon: CalendarDays },
 ];
 
 export function AdminShell({ children }: { children: ReactNode }) {
@@ -94,11 +90,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
         {NAV.map(({ href, label, icon: Icon }, i) => {
           const active =
             pathname === href ||
-            (href !== "/admin/doctors" &&
-              href !== "/admin/dashboard" &&
-              pathname.startsWith(href)) ||
-            (href === "/admin/doctors" &&
-              pathname === "/admin/doctors");
+            (href !== "/admin/dashboard" && pathname.startsWith(href));
           return (
             <Link
               key={href}
@@ -156,7 +148,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
           </button>
           <div className="hidden lg:block">
             <p className="text-sm font-semibold text-slate-100">Clinic operations</p>
-            <p className="text-xs text-slate-400">Doctors · Patients · Appointments</p>
+            <p className="text-xs text-slate-400">Doctors · Specialities · Patients</p>
           </div>
           <div
             className="rounded-full px-3 py-1 text-xs font-semibold text-white"

@@ -78,10 +78,10 @@ export default function LoginPage() {
         <div className="animate-slide-in-left relative z-10 shrink-0 p-8">
           <div className="premium-chip mb-4 inline-flex items-center gap-2 rounded-full border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-sky-100">
             <Sparkles size={13} className="text-sky-400" />
-            Hospital Operations Platform
+            Clinic Platform
           </div>
           <h1 className="text-3xl font-bold text-white drop-shadow-lg">Telemed</h1>
-          <p className="mt-1 text-sm text-slate-300">Clinic Admin Portal</p>
+          <p className="mt-1 text-sm text-slate-300">Admin Portal</p>
         </div>
 
         <div className="relative z-10 flex flex-1 items-center justify-center px-6">
@@ -104,10 +104,10 @@ export default function LoginPage() {
             Centralized clinic operations — doctors, specialities, patients, and appointments in one
             secure portal.
           </p>
-          <div className="mt-3 flex items-center gap-2 text-xs text-slate-400">
+          {/* <div className="mt-3 flex items-center gap-2 text-xs text-slate-400">
             <ShieldCheck size={14} className="text-sky-400" />
             JWT-secured · Role-based access · Live WhatsApp intake
-          </div>
+          </div> */}
         </div>
       </div>
 

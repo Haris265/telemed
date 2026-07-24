@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import { Pencil, Plus, Power, PowerOff, Trash2 } from "lucide-react";
 
 import { api, unwrapList } from "@/lib/api";
 import type { Speciality } from "@/lib/types";
@@ -9,17 +10,22 @@ import {
   Button,
   Card,
   EmptyState,
+  IconButton,
   Input,
   Modal,
   PageHeader,
   Skeleton,
 } from "@/components/ui";
 
+type FormMode = "create" | "edit";
+
 export default function SpecialitiesPage() {
   const [items, setItems] = useState<Speciality[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<FormMode>("create");
+  const [editing, setEditing] = useState<Speciality | null>(null);
   const [name, setName] = useState("");
   const [iconUrl, setIconUrl] = useState("");
   const [saving, setSaving] = useState(false);
@@ -41,25 +47,64 @@ export default function SpecialitiesPage() {
     load();
   }, []);
 
-  async function onCreate(e: FormEvent) {
+  function openCreate() {
+    setMode("create");
+    setEditing(null);
+    setName("");
+    setIconUrl("");
+    setOpen(true);
+  }
+
+  function openEdit(item: Speciality) {
+    setMode("edit");
+    setEditing(item);
+    setName(item.name);
+    setIconUrl(item.icon_url || "");
+    setOpen(true);
+  }
+
+  function closeModal() {
+    setOpen(false);
+    setEditing(null);
+    setName("");
+    setIconUrl("");
+  }
+
+  async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.createSpeciality({ name, icon_url: iconUrl, is_active: true });
-      setOpen(false);
-      setName("");
-      setIconUrl("");
+      if (mode === "create") {
+        await api.createSpeciality({ name, icon_url: iconUrl, is_active: true });
+      } else if (editing) {
+        await api.updateSpeciality(editing.id, { name, icon_url: iconUrl });
+      }
+      closeModal();
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Create failed");
+      setError(err instanceof Error ? err.message : "Save failed");
     } finally {
       setSaving(false);
     }
   }
 
   async function toggleActive(item: Speciality) {
-    await api.updateSpeciality(item.id, { is_active: !item.is_active });
-    await load();
+    try {
+      await api.updateSpeciality(item.id, { is_active: !item.is_active });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Update failed");
+    }
+  }
+
+  async function onDelete(item: Speciality) {
+    if (!window.confirm(`Delete speciality "${item.name}"?`)) return;
+    try {
+      await api.deleteSpeciality(item.id);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed");
+    }
   }
 
   return (
@@ -67,7 +112,12 @@ export default function SpecialitiesPage() {
       <PageHeader
         title="Specialities"
         subtitle="Manage clinical specialities available during doctor onboarding."
-        action={<Button onClick={() => setOpen(true)}>Add New</Button>}
+        action={
+          <Button onClick={openCreate}>
+            <Plus size={16} />
+            Add New
+          </Button>
+        }
       />
       {error ? (
         <p className="mb-4 rounded-lg border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</p>
@@ -89,14 +139,14 @@ export default function SpecialitiesPage() {
           </div>
         ) : (
           <table className="min-w-full text-left text-sm">
-<thead className="bg-slate-900/50 text-xs uppercase tracking-wide text-slate-400">
-            <tr>
-              <th className="px-5 py-3 font-semibold">Name</th>
-              <th className="px-5 py-3 font-semibold">Icon</th>
-              <th className="px-5 py-3 font-semibold">Status</th>
-              <th className="px-5 py-3 font-semibold">Actions</th>
-            </tr>
-          </thead>
+            <thead className="bg-slate-900/50 text-xs uppercase tracking-wide text-slate-400">
+              <tr>
+                <th className="px-5 py-3 font-semibold">Name</th>
+                <th className="px-5 py-3 font-semibold">Icon</th>
+                <th className="px-5 py-3 font-semibold">Status</th>
+                <th className="px-5 py-3 font-semibold">Actions</th>
+              </tr>
+            </thead>
             <tbody>
               {items.map((item) => (
                 <tr key={item.id} className="border-t border-slate-700/70 hover:bg-slate-800/50">
@@ -115,9 +165,25 @@ export default function SpecialitiesPage() {
                     </Badge>
                   </td>
                   <td className="px-5 py-3">
-                    <Button variant="secondary" onClick={() => toggleActive(item)}>
-                      {item.is_active ? "Deactivate" : "Activate"}
-                    </Button>
+                    <div className="flex items-center gap-1.5">
+                      <IconButton tone="edit" title="Edit" onClick={() => openEdit(item)}>
+                        <Pencil size={15} strokeWidth={1.75} />
+                      </IconButton>
+                      <IconButton
+                        tone={item.is_active ? "warning" : "success"}
+                        title={item.is_active ? "Deactivate" : "Activate"}
+                        onClick={() => toggleActive(item)}
+                      >
+                        {item.is_active ? (
+                          <PowerOff size={15} strokeWidth={1.75} />
+                        ) : (
+                          <Power size={15} strokeWidth={1.75} />
+                        )}
+                      </IconButton>
+                      <IconButton tone="danger" title="Delete" onClick={() => onDelete(item)}>
+                        <Trash2 size={15} strokeWidth={1.75} />
+                      </IconButton>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -126,8 +192,12 @@ export default function SpecialitiesPage() {
         )}
       </Card>
 
-      <Modal open={open} title="Add Speciality" onClose={() => setOpen(false)}>
-        <form onSubmit={onCreate} className="space-y-4">
+      <Modal
+        open={open}
+        title={mode === "create" ? "Add Speciality" : "Edit Speciality"}
+        onClose={closeModal}
+      >
+        <form onSubmit={onSubmit} className="space-y-4">
           <Input
             label="Name"
             value={name}
@@ -142,11 +212,11 @@ export default function SpecialitiesPage() {
             placeholder="https://..."
           />
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
+            <Button type="button" variant="secondary" onClick={closeModal}>
               Cancel
             </Button>
             <Button type="submit" disabled={saving}>
-              {saving ? "Saving…" : "Create"}
+              {saving ? "Saving…" : mode === "create" ? "Create" : "Save"}
             </Button>
           </div>
         </form>

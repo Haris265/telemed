@@ -135,11 +135,22 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
-  updateDoctor: (id: number, payload: Partial<{ is_active: boolean; session_time: number }>) =>
+  updateDoctor: (
+    id: number,
+    payload: Partial<{
+      first_name: string;
+      last_name: string;
+      speciality_ids: number[];
+      session_time: number;
+      is_active: boolean;
+    }>,
+  ) =>
     request<Doctor>(`/api/admin/doctors/${id}/`, {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
+  deleteDoctor: (id: number) =>
+    request<void>(`/api/admin/doctors/${id}/`, { method: "DELETE" }),
   patients: (q = "") =>
     request<Paginated<Patient> | Patient[]>(
       `/api/admin/patients/${q ? `?q=${encodeURIComponent(q)}` : ""}`,

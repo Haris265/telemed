@@ -27,6 +27,40 @@ export function Button({
   );
 }
 
+export function IconButton({
+  children,
+  tone = "neutral",
+  className = "",
+  title,
+  ...props
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  tone?: "neutral" | "edit" | "success" | "warning" | "danger";
+}) {
+  const tones = {
+    neutral:
+      "border-slate-600/50 bg-slate-800/60 text-slate-300 hover:border-slate-500 hover:bg-slate-700/80 hover:text-slate-100",
+    edit: "border-sky-500/25 bg-sky-500/10 text-sky-300 hover:border-sky-400/40 hover:bg-sky-500/20 hover:text-sky-200",
+    success:
+      "border-emerald-500/25 bg-emerald-500/10 text-emerald-300 hover:border-emerald-400/40 hover:bg-emerald-500/20 hover:text-emerald-200",
+    warning:
+      "border-amber-500/25 bg-amber-500/10 text-amber-300 hover:border-amber-400/40 hover:bg-amber-500/20 hover:text-amber-200",
+    danger:
+      "border-red-500/25 bg-red-500/10 text-red-300 hover:border-red-400/40 hover:bg-red-500/20 hover:text-red-200",
+  }[tone];
+
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border transition duration-150 disabled:opacity-50 ${tones} ${className}`}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function Input({
   label,
   className = "",
