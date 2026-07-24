@@ -30,7 +30,14 @@ class MetaWhatsAppClient:
         }
         try:
             resp = requests.post(self.base_url, json=payload, headers=headers, timeout=15)
-            resp.raise_for_status()
+            if not resp.ok:
+                logger.error(
+                    "Meta WA send failed (%s) to %s: %s",
+                    resp.status_code,
+                    to,
+                    resp.text[:500],
+                )
+                resp.raise_for_status()
             return resp.json()
         except Exception:
             logger.exception("Failed to send WhatsApp message to %s", to)

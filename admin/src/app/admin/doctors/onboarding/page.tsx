@@ -21,7 +21,7 @@ export default function DoctorOnboardingPage() {
 
   useEffect(() => {
     api
-      .specialities()
+      .specialities({ page_size: "100" })
       .then((data) => setSpecialities(unwrapList(data).filter((s) => s.is_active)))
       .catch((e) => setError(e.message));
   }, []);

@@ -45,6 +45,8 @@ export type Appointment = {
   doctor: number;
   doctor_name: string;
   scheduled_at: string;
+  token_date: string;
+  token_number: number;
   status: "upcoming" | "completed" | "cancelled";
   notes: string;
   created_at: string;

@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { Pencil, Power, PowerOff, Trash2, UserPlus } from "lucide-react";
 
-import { api, unwrapList } from "@/lib/api";
+import { api, unwrapCount, unwrapList } from "@/lib/api";
 import type { Doctor, Speciality } from "@/lib/types";
 import {
   Badge,
@@ -15,12 +15,17 @@ import {
   Input,
   Modal,
   PageHeader,
+  PaginationBar,
   Skeleton,
 } from "@/components/ui";
+
+const PAGE_SIZE = 10;
 
 export default function DoctorsPage() {
   const [items, setItems] = useState<Doctor[]>([]);
   const [specialities, setSpecialities] = useState<Speciality[]>([]);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -32,11 +37,24 @@ export default function DoctorsPage() {
   const [selected, setSelected] = useState<number[]>([]);
   const [saving, setSaving] = useState(false);
 
-  async function load(search = q) {
+  async function load(search = q, nextPage = page) {
     setLoading(true);
     try {
-      const data = await api.doctors(search ? { q: search } : {});
-      setItems(unwrapList(data));
+      const params: Record<string, string> = {
+        page: String(nextPage),
+        page_size: String(PAGE_SIZE),
+      };
+      if (search) params.q = search;
+      const data = await api.doctors(params);
+      const list = unwrapList(data);
+      const count = unwrapCount(data);
+      if (!list.length && nextPage > 1 && count > 0) {
+        await load(search, nextPage - 1);
+        return;
+      }
+      setItems(list);
+      setTotal(count);
+      setPage(nextPage);
       setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
@@ -46,9 +64,9 @@ export default function DoctorsPage() {
   }
 
   useEffect(() => {
-    load("");
+    load("", 1);
     api
-      .specialities()
+      .specialities({ page_size: "100" })
       .then((data) => setSpecialities(unwrapList(data).filter((s) => s.is_active)))
       .catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -155,7 +173,13 @@ export default function DoctorsPage() {
           onChange={(e) => setQ(e.target.value)}
           className="max-w-sm"
         />
-        <Button variant="secondary" onClick={() => load()}>
+        <Button
+          variant="secondary"
+          onClick={() => {
+            setPage(1);
+            load(q, 1);
+          }}
+        >
           Search
         </Button>
       </div>
@@ -178,6 +202,7 @@ export default function DoctorsPage() {
             />
           </div>
         ) : (
+          <>
           <table className="min-w-full text-left text-sm">
             <thead className="bg-slate-900/50 text-xs uppercase tracking-wide text-slate-400">
               <tr>
@@ -235,6 +260,13 @@ export default function DoctorsPage() {
               ))}
             </tbody>
           </table>
+          <PaginationBar
+            page={page}
+            pageSize={PAGE_SIZE}
+            total={total}
+            onPageChange={(p) => load(q, p)}
+          />
+          </>
         )}
       </Card>
 

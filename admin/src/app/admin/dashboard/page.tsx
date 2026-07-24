@@ -53,7 +53,7 @@ export default function DashboardPage() {
       value: stats?.total_appointments,
       icon: CalendarDays,
       gradient: "from-cyan-500 to-teal-600",
-      href: null as string | null,
+      href: "/admin/appointments",
     },
   ];
 

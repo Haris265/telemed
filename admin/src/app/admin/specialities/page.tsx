@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Pencil, Plus, Power, PowerOff, Trash2 } from "lucide-react";
 
-import { api, unwrapList } from "@/lib/api";
+import { api, unwrapCount, unwrapList } from "@/lib/api";
 import type { Speciality } from "@/lib/types";
 import {
   Badge,
@@ -14,13 +14,18 @@ import {
   Input,
   Modal,
   PageHeader,
+  PaginationBar,
   Skeleton,
 } from "@/components/ui";
 
 type FormMode = "create" | "edit";
 
+const PAGE_SIZE = 10;
+
 export default function SpecialitiesPage() {
   const [items, setItems] = useState<Speciality[]>([]);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [open, setOpen] = useState(false);
@@ -30,11 +35,23 @@ export default function SpecialitiesPage() {
   const [iconUrl, setIconUrl] = useState("");
   const [saving, setSaving] = useState(false);
 
-  async function load() {
+  async function load(nextPage = page) {
     setLoading(true);
     try {
-      const data = await api.specialities();
-      setItems(unwrapList(data));
+      const data = await api.specialities({
+        page: String(nextPage),
+        page_size: String(PAGE_SIZE),
+      });
+      const list = unwrapList(data);
+      const count = unwrapCount(data);
+      // If page is empty after delete, step back
+      if (!list.length && nextPage > 1 && count > 0) {
+        await load(nextPage - 1);
+        return;
+      }
+      setItems(list);
+      setTotal(count);
+      setPage(nextPage);
       setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
@@ -44,7 +61,8 @@ export default function SpecialitiesPage() {
   }
 
   useEffect(() => {
-    load();
+    load(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function openCreate() {
@@ -76,11 +94,15 @@ export default function SpecialitiesPage() {
     try {
       if (mode === "create") {
         await api.createSpeciality({ name, icon_url: iconUrl, is_active: true });
+        closeModal();
+        await load(1);
       } else if (editing) {
         await api.updateSpeciality(editing.id, { name, icon_url: iconUrl });
+        closeModal();
+        await load(page);
+      } else {
+        closeModal();
       }
-      closeModal();
-      await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
     } finally {
@@ -138,6 +160,7 @@ export default function SpecialitiesPage() {
             />
           </div>
         ) : (
+          <>
           <table className="min-w-full text-left text-sm">
             <thead className="bg-slate-900/50 text-xs uppercase tracking-wide text-slate-400">
               <tr>
@@ -189,6 +212,13 @@ export default function SpecialitiesPage() {
               ))}
             </tbody>
           </table>
+          <PaginationBar
+            page={page}
+            pageSize={PAGE_SIZE}
+            total={total}
+            onPageChange={(p) => load(p)}
+          />
+          </>
         )}
       </Card>
 

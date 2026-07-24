@@ -1,4 +1,5 @@
 from django.db.models import Q
+from django.utils import timezone
 from rest_framework import generics
 
 from accounts.permissions import IsAdmin
@@ -24,14 +25,17 @@ class AdminAppointmentListCreateView(generics.ListCreateAPIView):
         q = self.request.query_params.get("q")
         date_from = self.request.query_params.get("date_from")
         date_to = self.request.query_params.get("date_to")
+        today = self.request.query_params.get("today")
+        if today and today.lower() in ("1", "true", "yes"):
+            qs = qs.filter(token_date=timezone.localdate())
         if status_param:
             qs = qs.filter(status=status_param)
         if doctor:
             qs = qs.filter(doctor_id=doctor)
         if date_from:
-            qs = qs.filter(scheduled_at__date__gte=date_from)
+            qs = qs.filter(token_date__gte=date_from)
         if date_to:
-            qs = qs.filter(scheduled_at__date__lte=date_to)
+            qs = qs.filter(token_date__lte=date_to)
         if q:
             qs = qs.filter(
                 Q(patient__name__icontains=q)
@@ -39,7 +43,7 @@ class AdminAppointmentListCreateView(generics.ListCreateAPIView):
                 | Q(doctor__first_name__icontains=q)
                 | Q(doctor__last_name__icontains=q)
             )
-        return qs
+        return qs.order_by("-token_date", "token_number")
 
 
 class AdminAppointmentDetailView(generics.RetrieveUpdateAPIView):

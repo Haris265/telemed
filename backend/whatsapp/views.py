@@ -51,11 +51,19 @@ class WhatsAppWebhookView(APIView):
     authentication_classes = []
 
     def get(self, request):
-        mode = request.query_params.get("hub.mode")
-        token = request.query_params.get("hub.verify_token")
-        challenge = request.query_params.get("hub.challenge")
-        if mode == "subscribe" and token == settings.META_WA_VERIFY_TOKEN:
-            return HttpResponse(challenge or "", content_type="text/plain")
+        # Meta sends hub.mode / hub.verify_token; some proxies also send hub_mode.
+        qp = request.query_params
+        mode = (qp.get("hub.mode") or qp.get("hub_mode") or "").strip()
+        token = (qp.get("hub.verify_token") or qp.get("hub_verify_token") or "").strip()
+        challenge = qp.get("hub.challenge") or qp.get("hub_challenge") or ""
+        expected = (settings.META_WA_VERIFY_TOKEN or "").strip()
+        if mode == "subscribe" and expected and token == expected:
+            return HttpResponse(str(challenge), content_type="text/plain")
+        logger.warning(
+            "WhatsApp webhook verify failed (mode=%r token_match=%s)",
+            mode,
+            bool(token) and token == expected,
+        )
         return HttpResponseForbidden("Verification failed")
 
     def post(self, request):

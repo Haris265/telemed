@@ -141,8 +141,8 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
     ),
-    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
-    "PAGE_SIZE": 20,
+    "DEFAULT_PAGINATION_CLASS": "config.pagination.StandardPagination",
+    "PAGE_SIZE": 10,
 }
 
 SIMPLE_JWT = {
@@ -151,7 +151,7 @@ SIMPLE_JWT = {
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
 
-META_WA_TOKEN = os.getenv("META_WA_TOKEN", "")
-META_WA_PHONE_NUMBER_ID = os.getenv("META_WA_PHONE_NUMBER_ID", "")
-META_WA_VERIFY_TOKEN = os.getenv("META_WA_VERIFY_TOKEN", "telemed-verify-token")
-META_WA_APP_SECRET = os.getenv("META_WA_APP_SECRET", "")
+META_WA_TOKEN = os.getenv("META_WA_TOKEN", "").strip()
+META_WA_PHONE_NUMBER_ID = os.getenv("META_WA_PHONE_NUMBER_ID", "").strip()
+META_WA_VERIFY_TOKEN = os.getenv("META_WA_VERIFY_TOKEN", "telemed-verify-token").strip()
+META_WA_APP_SECRET = os.getenv("META_WA_APP_SECRET", "").strip()

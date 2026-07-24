@@ -21,18 +21,28 @@ class AppointmentSerializer(serializers.ModelSerializer):
             "doctor",
             "doctor_name",
             "scheduled_at",
+            "token_date",
+            "token_number",
             "status",
             "notes",
             "created_at",
             "updated_at",
         )
-        read_only_fields = ("created_at", "updated_at")
+        read_only_fields = ("created_at", "updated_at", "token_date", "token_number")
 
 
 class AppointmentWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Appointment
-        fields = ("patient", "doctor", "scheduled_at", "status", "notes")
+        fields = (
+            "patient",
+            "doctor",
+            "scheduled_at",
+            "token_date",
+            "token_number",
+            "status",
+            "notes",
+        )
 
     def validate_doctor(self, value: DoctorProfile):
         if not value.is_active:

@@ -98,10 +98,12 @@ export async function login(username: string, password: string) {
 
 export const api = {
   dashboard: () => request<DashboardStats>("/api/admin/dashboard/"),
-  specialities: (q = "") =>
-    request<Paginated<Speciality> | Speciality[]>(
-      `/api/admin/specialities/${q ? `?q=${encodeURIComponent(q)}` : ""}`,
-    ),
+  specialities: (params: Record<string, string> = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return request<Paginated<Speciality> | Speciality[]>(
+      `/api/admin/specialities/${qs ? `?${qs}` : ""}`,
+    );
+  },
   createSpeciality: (payload: { name: string; icon_url?: string; is_active?: boolean }) =>
     request<Speciality>("/api/admin/specialities/", {
       method: "POST",
@@ -151,10 +153,12 @@ export const api = {
     }),
   deleteDoctor: (id: number) =>
     request<void>(`/api/admin/doctors/${id}/`, { method: "DELETE" }),
-  patients: (q = "") =>
-    request<Paginated<Patient> | Patient[]>(
-      `/api/admin/patients/${q ? `?q=${encodeURIComponent(q)}` : ""}`,
-    ),
+  patients: (params: Record<string, string> = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return request<Paginated<Patient> | Patient[]>(
+      `/api/admin/patients/${qs ? `?${qs}` : ""}`,
+    );
+  },
   appointments: (params: Record<string, string> = {}) => {
     const qs = new URLSearchParams(params).toString();
     return request<Paginated<Appointment> | Appointment[]>(
@@ -170,4 +174,8 @@ export const api = {
 
 export function unwrapList<T>(data: Paginated<T> | T[]): T[] {
   return Array.isArray(data) ? data : data.results;
+}
+
+export function unwrapCount<T>(data: Paginated<T> | T[]): number {
+  return Array.isArray(data) ? data.length : data.count;
 }

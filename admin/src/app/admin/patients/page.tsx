@@ -2,21 +2,47 @@
 
 import { useEffect, useState } from "react";
 
-import { api, unwrapList } from "@/lib/api";
+import { api, unwrapCount, unwrapList } from "@/lib/api";
 import type { Patient } from "@/lib/types";
-import { Badge, Button, Card, EmptyState, Input, PageHeader, Skeleton } from "@/components/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  Input,
+  PageHeader,
+  PaginationBar,
+  Skeleton,
+} from "@/components/ui";
+
+const PAGE_SIZE = 10;
 
 export default function PatientsPage() {
   const [items, setItems] = useState<Patient[]>([]);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  async function load(search = q) {
+  async function load(search = q, nextPage = page) {
     setLoading(true);
     try {
-      const data = await api.patients(search);
-      setItems(unwrapList(data));
+      const params: Record<string, string> = {
+        page: String(nextPage),
+        page_size: String(PAGE_SIZE),
+      };
+      if (search.trim()) params.q = search.trim();
+      const data = await api.patients(params);
+      const list = unwrapList(data);
+      const count = unwrapCount(data);
+      if (!list.length && nextPage > 1 && count > 0) {
+        await load(search, nextPage - 1);
+        return;
+      }
+      setItems(list);
+      setTotal(count);
+      setPage(nextPage);
       setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
@@ -26,7 +52,7 @@ export default function PatientsPage() {
   }
 
   useEffect(() => {
-    load("");
+    load("", 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -44,7 +70,13 @@ export default function PatientsPage() {
           onChange={(e) => setQ(e.target.value)}
           className="max-w-sm"
         />
-        <Button variant="secondary" onClick={() => load()}>
+        <Button
+          variant="secondary"
+          onClick={() => {
+            setPage(1);
+            load(q, 1);
+          }}
+        >
           Search
         </Button>
       </div>
@@ -67,32 +99,40 @@ export default function PatientsPage() {
             />
           </div>
         ) : (
-          <table className="min-w-full text-left text-sm">
-            <thead className="bg-slate-900/50 text-xs uppercase tracking-wide text-slate-400">
-              <tr>
-                <th className="px-5 py-3 font-medium">Name</th>
-                <th className="px-5 py-3 font-medium">Phone</th>
-                <th className="px-5 py-3 font-medium">Verified</th>
-                <th className="px-5 py-3 font-medium">Joined</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((p) => (
-                <tr key={p.id} className="border-t border-slate-700/70 hover:bg-slate-800/50">
-                  <td className="px-5 py-3 font-medium">{p.name}</td>
-                  <td className="px-5 py-3 text-slate-300">{p.phone}</td>
-                  <td className="px-5 py-3">
-                    <Badge tone={p.is_verified ? "success" : "warning"}>
-                      {p.is_verified ? "Verified" : "Pending"}
-                    </Badge>
-                  </td>
-                  <td className="px-5 py-3 text-slate-400">
-                    {new Date(p.created_at).toLocaleDateString()}
-                  </td>
+          <>
+            <table className="min-w-full text-left text-sm">
+              <thead className="bg-slate-900/50 text-xs uppercase tracking-wide text-slate-400">
+                <tr>
+                  <th className="px-5 py-3 font-medium">Name</th>
+                  <th className="px-5 py-3 font-medium">Phone</th>
+                  <th className="px-5 py-3 font-medium">Verified</th>
+                  <th className="px-5 py-3 font-medium">Joined</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {items.map((p) => (
+                  <tr key={p.id} className="border-t border-slate-700/70 hover:bg-slate-800/50">
+                    <td className="px-5 py-3 font-medium">{p.name}</td>
+                    <td className="px-5 py-3 text-slate-300">{p.phone}</td>
+                    <td className="px-5 py-3">
+                      <Badge tone={p.is_verified ? "success" : "warning"}>
+                        {p.is_verified ? "Verified" : "Pending"}
+                      </Badge>
+                    </td>
+                    <td className="px-5 py-3 text-slate-400">
+                      {new Date(p.created_at).toLocaleDateString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <PaginationBar
+              page={page}
+              pageSize={PAGE_SIZE}
+              total={total}
+              onPageChange={(p) => load(q, p)}
+            />
+          </>
         )}
       </Card>
     </div>

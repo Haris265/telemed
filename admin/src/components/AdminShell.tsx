@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, useEffect, useState } from "react";
 import {
+  CalendarDays,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -21,6 +22,7 @@ const NAV = [
   { href: "/admin/specialities", label: "Specialities", icon: HeartPulse },
   { href: "/admin/doctors", label: "Doctors", icon: Stethoscope },
   { href: "/admin/patients", label: "Patients", icon: Users },
+  { href: "/admin/appointments", label: "Appointments", icon: CalendarDays },
 ];
 
 export function AdminShell({ children }: { children: ReactNode }) {
@@ -148,7 +150,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
           </button>
           <div className="hidden lg:block">
             <p className="text-sm font-semibold text-slate-100">Clinic operations</p>
-            <p className="text-xs text-slate-400">Doctors · Specialities · Patients</p>
+            <p className="text-xs text-slate-400">Doctors · Patients · Appointments</p>
           </div>
           <div
             className="rounded-full px-3 py-1 text-xs font-semibold text-white"

@@ -6,6 +6,8 @@ class WhatsAppSession(models.Model):
         IDLE = "idle", "Idle"
         AWAITING_NAME = "awaiting_name", "Awaiting Name"
         AWAITING_OTP = "awaiting_otp", "Awaiting OTP"
+        AWAITING_SPECIALITY = "awaiting_speciality", "Awaiting Speciality"
+        AWAITING_DOCTOR = "awaiting_doctor", "Awaiting Doctor"
         MENU = "menu", "Menu"
 
     phone = models.CharField(max_length=20, unique=True, db_index=True)
