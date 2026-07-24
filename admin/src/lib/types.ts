@@ -18,6 +18,7 @@ export type Speciality = {
 
 export type Doctor = {
   id: number;
+  uuid: string;
   first_name: string;
   last_name: string;
   full_name: string;
@@ -30,6 +31,7 @@ export type Doctor = {
 
 export type Patient = {
   id: number;
+  uuid: string;
   phone: string;
   name: string;
   is_verified: boolean;
@@ -47,10 +49,25 @@ export type Appointment = {
   scheduled_at: string;
   token_date: string;
   token_number: number;
+  token_code: string;
   status: "upcoming" | "completed" | "cancelled";
   notes: string;
   created_at: string;
   updated_at: string;
+};
+
+export type PatientDetail = Patient & {
+  appointments: Appointment[];
+};
+
+export type DoctorAvailability = {
+  id: number;
+  weekday: number;
+  weekday_display: string;
+  start_time: string;
+  end_time: string;
+  is_active: boolean;
+  created_at: string;
 };
 
 export type DashboardStats = {

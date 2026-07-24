@@ -3,10 +3,12 @@ from django.urls import path
 from appointments.views import (
     AdminAppointmentDetailView,
     AdminAppointmentListCreateView,
+    AdminPatientDetailView,
     AdminPatientListView,
 )
 
 from .views import (
+    AdminDoctorAvailabilityListView,
     DashboardStatsView,
     DoctorAppointmentListView,
     DoctorAvailabilityListCreateView,
@@ -27,8 +29,18 @@ urlpatterns = [
     ),
     path("doctors/onboarding/", DoctorOnboardingView.as_view(), name="admin-doctor-onboard"),
     path("doctors/", DoctorListView.as_view(), name="admin-doctors"),
-    path("doctors/<int:pk>/", DoctorDetailView.as_view(), name="admin-doctor-detail"),
+    path(
+        "doctors/<uuid:uuid>/availability/",
+        AdminDoctorAvailabilityListView.as_view(),
+        name="admin-doctor-availability",
+    ),
+    path("doctors/<uuid:uuid>/", DoctorDetailView.as_view(), name="admin-doctor-detail"),
     path("patients/", AdminPatientListView.as_view(), name="admin-patients"),
+    path(
+        "patients/<uuid:uuid>/",
+        AdminPatientDetailView.as_view(),
+        name="admin-patient-detail",
+    ),
     path("appointments/", AdminAppointmentListCreateView.as_view(), name="admin-appointments"),
     path(
         "appointments/<int:pk>/",

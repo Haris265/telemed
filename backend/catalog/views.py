@@ -1,5 +1,3 @@
-from datetime import timedelta
-
 from django.db.models import Q
 from django.utils import timezone
 from rest_framework import generics, status
@@ -24,22 +22,19 @@ class DashboardStatsView(APIView):
     permission_classes = [IsAdmin]
 
     def get(self, request):
-        now = timezone.now()
-        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        today_end = today_start + timedelta(days=1)
+        today = timezone.localdate()
 
         upcoming_today = (
             Appointment.objects.filter(
                 status=Appointment.Status.UPCOMING,
-                scheduled_at__gte=today_start,
-                scheduled_at__lt=today_end,
+                token_date=today,
             )
             .select_related("patient", "doctor")
-            .order_by("scheduled_at")[:8]
+            .order_by("-created_at", "-id")[:5]
         )
         recent = (
             Appointment.objects.select_related("patient", "doctor")
-            .order_by("-created_at")[:8]
+            .order_by("-created_at", "-id")[:5]
         )
 
         return Response(
@@ -114,6 +109,8 @@ class DoctorDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAdmin]
     serializer_class = DoctorProfileSerializer
     queryset = DoctorProfile.objects.select_related("user").prefetch_related("specialities")
+    lookup_field = "uuid"
+    lookup_url_kwarg = "uuid"
 
     def perform_destroy(self, instance):
         # Cascade removes DoctorProfile via OneToOne; drop login account too.
@@ -133,6 +130,20 @@ class DoctorAvailabilityListCreateView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         serializer.save(doctor=self.get_doctor())
+
+
+class AdminDoctorAvailabilityListView(generics.ListAPIView):
+    """Admin read-only view of a doctor's weekly availability."""
+
+    permission_classes = [IsAdmin]
+    serializer_class = DoctorAvailabilitySerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        doctor_uuid = self.kwargs["uuid"]
+        return DoctorAvailability.objects.filter(doctor__uuid=doctor_uuid).order_by(
+            "weekday", "start_time"
+        )
 
 
 class DoctorAppointmentListView(generics.ListAPIView):

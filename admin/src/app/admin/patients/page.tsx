@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { Eye, Trash2 } from "lucide-react";
 
 import { api, unwrapCount, unwrapList } from "@/lib/api";
 import type { Patient } from "@/lib/types";
@@ -9,6 +11,7 @@ import {
   Button,
   Card,
   EmptyState,
+  IconButton,
   Input,
   PageHeader,
   PaginationBar,
@@ -56,11 +59,27 @@ export default function PatientsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  async function onDelete(patient: Patient) {
+    if (
+      !window.confirm(
+        `Delete patient "${patient.name}"? Their appointments will also be removed.`,
+      )
+    ) {
+      return;
+    }
+    try {
+      await api.deletePatient(patient.uuid);
+      await load(q, page);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed");
+    }
+  }
+
   return (
     <div className="animate-fade-in">
       <PageHeader
         title="Patients"
-        subtitle="WhatsApp-onboarded patient profiles across the network."
+        subtitle="WhatsApp-onboarded patient profiles — newest first."
       />
 
       <div className="mb-4 flex gap-2">
@@ -82,7 +101,9 @@ export default function PatientsPage() {
       </div>
 
       {error ? (
-        <p className="mb-4 rounded-lg border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</p>
+        <p className="mb-4 rounded-lg border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+          {error}
+        </p>
       ) : null}
 
       <Card className="overflow-hidden">
@@ -107,6 +128,7 @@ export default function PatientsPage() {
                   <th className="px-5 py-3 font-medium">Phone</th>
                   <th className="px-5 py-3 font-medium">Verified</th>
                   <th className="px-5 py-3 font-medium">Joined</th>
+                  <th className="px-5 py-3 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -121,6 +143,22 @@ export default function PatientsPage() {
                     </td>
                     <td className="px-5 py-3 text-slate-400">
                       {new Date(p.created_at).toLocaleDateString()}
+                    </td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-1.5">
+                        <Link href={`/admin/patients/${p.uuid}`}>
+                          <IconButton tone="edit" title="View bookings">
+                            <Eye size={15} strokeWidth={1.75} />
+                          </IconButton>
+                        </Link>
+                        <IconButton
+                          tone="danger"
+                          title="Delete"
+                          onClick={() => onDelete(p)}
+                        >
+                          <Trash2 size={15} strokeWidth={1.75} />
+                        </IconButton>
+                      </div>
                     </td>
                   </tr>
                 ))}

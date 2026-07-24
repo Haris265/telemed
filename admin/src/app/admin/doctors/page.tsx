@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
-import { Pencil, Power, PowerOff, Trash2, UserPlus } from "lucide-react";
+import { Eye, Pencil, Power, PowerOff, Trash2, UserPlus } from "lucide-react";
 
 import { api, unwrapCount, unwrapList } from "@/lib/api";
 import type { Doctor, Speciality } from "@/lib/types";
@@ -105,7 +105,7 @@ export default function DoctorsPage() {
     }
     setSaving(true);
     try {
-      await api.updateDoctor(editing.id, {
+      await api.updateDoctor(editing.uuid, {
         first_name: firstName,
         last_name: lastName,
         session_time: sessionTime,
@@ -122,7 +122,7 @@ export default function DoctorsPage() {
 
   async function toggle(doctor: Doctor) {
     try {
-      await api.updateDoctor(doctor.id, { is_active: !doctor.is_active });
+      await api.updateDoctor(doctor.uuid, { is_active: !doctor.is_active });
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Update failed");
@@ -134,7 +134,7 @@ export default function DoctorsPage() {
       return;
     }
     try {
-      await api.deleteDoctor(doctor.id);
+      await api.deleteDoctor(doctor.uuid);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
@@ -237,6 +237,11 @@ export default function DoctorsPage() {
                   </td>
                   <td className="px-5 py-3">
                     <div className="flex items-center gap-1.5">
+                      <Link href={`/admin/doctors/${d.uuid}`}>
+                        <IconButton tone="edit" title="View availability">
+                          <Eye size={15} strokeWidth={1.75} />
+                        </IconButton>
+                      </Link>
                       <IconButton tone="edit" title="Edit" onClick={() => openEdit(d)}>
                         <Pencil size={15} strokeWidth={1.75} />
                       </IconButton>

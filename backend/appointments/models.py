@@ -35,7 +35,7 @@ class Appointment(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["-token_date", "token_number"]
+        ordering = ["-created_at", "-id"]
         constraints = [
             UniqueConstraint(
                 fields=["doctor", "token_date", "token_number"],
@@ -48,5 +48,16 @@ class Appointment(models.Model):
             self.token_date = timezone.localdate()
         super().save(*args, **kwargs)
 
+    @staticmethod
+    def doctor_initials(doctor: DoctorProfile) -> str:
+        parts = [doctor.first_name.strip(), doctor.last_name.strip()]
+        initials = "".join(part[0].upper() for part in parts if part)
+        return initials or "DR"
+
+    @property
+    def token_code(self) -> str:
+        prefix = self.doctor_initials(self.doctor)
+        return f"{prefix}-{self.token_number:03d}"
+
     def __str__(self):
-        return f"#{self.token_number} {self.patient} → {self.doctor} @ {self.token_date}"
+        return f"{self.token_code} {self.patient} → {self.doctor} @ {self.token_date}"

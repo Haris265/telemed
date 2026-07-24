@@ -2,8 +2,10 @@ import type {
   Appointment,
   DashboardStats,
   Doctor,
+  DoctorAvailability,
   Paginated,
   Patient,
+  PatientDetail,
   Speciality,
   UserInfo,
 } from "./types";
@@ -66,6 +68,11 @@ async function request<T>(
   }
 
   const text = await res.text();
+  if (text && (text.trimStart().startsWith("<!DOCTYPE") || text.trimStart().startsWith("<html"))) {
+    throw new Error(
+      `API returned HTML instead of JSON (${res.status}). Check NEXT_PUBLIC_API_URL and backend.`,
+    );
+  }
   const data = text ? JSON.parse(text) : null;
   if (!res.ok) {
     const detail =
@@ -138,7 +145,7 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   updateDoctor: (
-    id: number,
+    uuid: string,
     payload: Partial<{
       first_name: string;
       last_name: string;
@@ -147,29 +154,41 @@ export const api = {
       is_active: boolean;
     }>,
   ) =>
-    request<Doctor>(`/api/admin/doctors/${id}/`, {
+    request<Doctor>(`/api/admin/doctors/${uuid}/`, {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
-  deleteDoctor: (id: number) =>
-    request<void>(`/api/admin/doctors/${id}/`, { method: "DELETE" }),
+  deleteDoctor: (uuid: string) =>
+    request<void>(`/api/admin/doctors/${uuid}/`, { method: "DELETE" }),
+  doctor: (uuid: string) => request<Doctor>(`/api/admin/doctors/${uuid}/`),
+  doctorAvailability: (uuid: string) =>
+    request<Paginated<DoctorAvailability> | DoctorAvailability[]>(
+      `/api/admin/doctors/${uuid}/availability/`,
+    ),
   patients: (params: Record<string, string> = {}) => {
     const qs = new URLSearchParams(params).toString();
     return request<Paginated<Patient> | Patient[]>(
       `/api/admin/patients/${qs ? `?${qs}` : ""}`,
     );
   },
+  patient: (uuid: string) => request<PatientDetail>(`/api/admin/patients/${uuid}/`),
+  deletePatient: (uuid: string) =>
+    request<void>(`/api/admin/patients/${uuid}/`, { method: "DELETE" }),
   appointments: (params: Record<string, string> = {}) => {
     const qs = new URLSearchParams(params).toString();
     return request<Paginated<Appointment> | Appointment[]>(
       `/api/admin/appointments/${qs ? `?${qs}` : ""}`,
     );
   },
+  appointment: (id: number | string) =>
+    request<Appointment>(`/api/admin/appointments/${id}/`),
   updateAppointment: (id: number, payload: Partial<{ status: string; notes: string }>) =>
     request<Appointment>(`/api/admin/appointments/${id}/`, {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
+  deleteAppointment: (id: number) =>
+    request<void>(`/api/admin/appointments/${id}/`, { method: "DELETE" }),
 };
 
 export function unwrapList<T>(data: Paginated<T> | T[]): T[] {

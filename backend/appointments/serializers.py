@@ -10,6 +10,7 @@ class AppointmentSerializer(serializers.ModelSerializer):
     patient_name = serializers.CharField(source="patient.name", read_only=True)
     patient_phone = serializers.CharField(source="patient.phone", read_only=True)
     doctor_name = serializers.CharField(source="doctor.full_name", read_only=True)
+    token_code = serializers.CharField(read_only=True)
 
     class Meta:
         model = Appointment
@@ -23,12 +24,19 @@ class AppointmentSerializer(serializers.ModelSerializer):
             "scheduled_at",
             "token_date",
             "token_number",
+            "token_code",
             "status",
             "notes",
             "created_at",
             "updated_at",
         )
-        read_only_fields = ("created_at", "updated_at", "token_date", "token_number")
+        read_only_fields = (
+            "created_at",
+            "updated_at",
+            "token_date",
+            "token_number",
+            "token_code",
+        )
 
 
 class AppointmentWriteSerializer(serializers.ModelSerializer):

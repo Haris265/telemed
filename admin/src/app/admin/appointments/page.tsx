@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { Eye, Trash2 } from "lucide-react";
 
 import { api, unwrapCount, unwrapList } from "@/lib/api";
 import type { Appointment } from "@/lib/types";
@@ -9,6 +11,7 @@ import {
   Button,
   Card,
   EmptyState,
+  IconButton,
   Input,
   PageHeader,
   PaginationBar,
@@ -30,7 +33,7 @@ export default function AppointmentsPage() {
   const [total, setTotal] = useState(0);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("");
-  const [todayOnly, setTodayOnly] = useState(true);
+  const [todayOnly, setTodayOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -67,11 +70,27 @@ export default function AppointmentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [todayOnly, status]);
 
+  async function onDelete(item: Appointment) {
+    if (
+      !window.confirm(
+        `Delete appointment ${item.token_code} for ${item.patient_name}?`,
+      )
+    ) {
+      return;
+    }
+    try {
+      await api.deleteAppointment(item.id);
+      await load(page);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed");
+    }
+  }
+
   return (
     <div className="animate-fade-in">
       <PageHeader
         title="Appointments"
-        subtitle="Same-day queue tokens booked via WhatsApp and the clinic network."
+        subtitle="Queue tokens booked via WhatsApp — newest bookings first."
       />
 
       <div className="mb-4 flex flex-wrap items-end gap-2">
@@ -133,6 +152,7 @@ export default function AppointmentsPage() {
                   <th className="px-5 py-3 font-medium">Doctor</th>
                   <th className="px-5 py-3 font-medium">Date</th>
                   <th className="px-5 py-3 font-medium">Status</th>
+                  <th className="px-5 py-3 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -140,7 +160,7 @@ export default function AppointmentsPage() {
                   <tr key={a.id} className="border-t border-slate-700/70 hover:bg-slate-800/50">
                     <td className="px-5 py-3">
                       <span className="inline-flex rounded-lg border border-sky-400/30 bg-sky-500/10 px-2.5 py-1 text-sm font-bold text-sky-200">
-                        #{a.token_number}
+                        {a.token_code}
                       </span>
                     </td>
                     <td className="px-5 py-3">
@@ -161,6 +181,18 @@ export default function AppointmentsPage() {
                       >
                         {a.status}
                       </Badge>
+                    </td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-1.5">
+                        <Link href={`/admin/appointments/${a.id}`}>
+                          <IconButton tone="edit" title="View detail">
+                            <Eye size={15} strokeWidth={1.75} />
+                          </IconButton>
+                        </Link>
+                        <IconButton tone="danger" title="Delete" onClick={() => onDelete(a)}>
+                          <Trash2 size={15} strokeWidth={1.75} />
+                        </IconButton>
+                      </div>
                     </td>
                   </tr>
                 ))}

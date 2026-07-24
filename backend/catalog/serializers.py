@@ -80,6 +80,7 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
         model = DoctorProfile
         fields = (
             "id",
+            "uuid",
             "first_name",
             "last_name",
             "full_name",
@@ -90,7 +91,7 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
             "is_active",
             "created_at",
         )
-        read_only_fields = ("created_at",)
+        read_only_fields = ("uuid", "created_at")
 
     def validate_speciality_ids(self, value):
         if not value:

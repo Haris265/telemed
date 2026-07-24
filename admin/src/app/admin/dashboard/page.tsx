@@ -11,7 +11,7 @@ import {
 
 import { api } from "@/lib/api";
 import type { DashboardStats } from "@/lib/types";
-import { Badge, Card, EmptyState, Skeleton } from "@/components/ui";
+import { Badge, Button, Card, EmptyState, Skeleton } from "@/components/ui";
 
 function formatWhen(iso: string) {
   return new Date(iso).toLocaleString(undefined, {
@@ -117,7 +117,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card className="p-5">
+        <Card className="flex flex-col p-5">
           <h2 className="mb-4 text-lg font-bold text-slate-50">Today&apos;s upcoming</h2>
           {loading ? (
             <Skeleton className="h-40" />
@@ -134,7 +134,10 @@ export default function DashboardPage() {
                   className="flex items-center justify-between rounded-2xl border border-slate-600/50 bg-slate-900/40 px-3 py-3"
                 >
                   <div>
-                    <p className="text-sm font-semibold text-slate-100">{a.patient_name}</p>
+                    <p className="text-sm font-semibold text-slate-100">
+                      {a.patient_name}
+                      <span className="ml-2 text-xs font-bold text-sky-300">{a.token_code}</span>
+                    </p>
                     <p className="text-xs text-slate-400">
                       Dr. {a.doctor_name} · {formatWhen(a.scheduled_at)}
                     </p>
@@ -144,9 +147,16 @@ export default function DashboardPage() {
               ))}
             </div>
           )}
+          <div className="mt-auto pt-4">
+            <Link href="/admin/appointments">
+              <Button variant="secondary" className="w-full">
+                View all
+              </Button>
+            </Link>
+          </div>
         </Card>
 
-        <Card className="p-5">
+        <Card className="flex flex-col p-5">
           <h2 className="mb-4 text-lg font-bold text-slate-50">Recent activity</h2>
           {loading ? (
             <Skeleton className="h-40" />
@@ -160,6 +170,7 @@ export default function DashboardPage() {
               <table className="min-w-full text-left text-sm">
                 <thead className="text-xs uppercase tracking-wide text-slate-400">
                   <tr>
+                    <th className="pb-2 font-medium">Token</th>
                     <th className="pb-2 font-medium">Patient</th>
                     <th className="pb-2 font-medium">Doctor</th>
                     <th className="pb-2 font-medium">Status</th>
@@ -168,6 +179,7 @@ export default function DashboardPage() {
                 <tbody>
                   {stats.recent_appointments.map((a) => (
                     <tr key={a.id} className="border-t border-slate-700/70">
+                      <td className="py-2.5 font-bold text-sky-300">{a.token_code}</td>
                       <td className="py-2.5 font-medium text-slate-100">{a.patient_name}</td>
                       <td className="py-2.5 text-slate-400">Dr. {a.doctor_name}</td>
                       <td className="py-2.5">
@@ -189,6 +201,13 @@ export default function DashboardPage() {
               </table>
             </div>
           )}
+          <div className="mt-auto pt-4">
+            <Link href="/admin/appointments">
+              <Button variant="secondary" className="w-full">
+                View all
+              </Button>
+            </Link>
+          </div>
         </Card>
       </div>
     </div>
