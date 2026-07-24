@@ -26,7 +26,27 @@ export type Doctor = {
   specialities: Speciality[];
   session_time: number;
   is_active: boolean;
+  has_active_subscription: boolean;
+  subscription_status: "subscribed" | "expired" | "none";
   created_at: string;
+};
+
+export type DoctorSubscription = {
+  id: number;
+  uuid: string;
+  doctor: number;
+  doctor_uuid: string;
+  doctor_name: string;
+  doctor_email: string;
+  amount: string;
+  payment_method: "cash";
+  start_date: string;
+  end_date: string;
+  is_active: boolean;
+  is_currently_valid: boolean;
+  notes: string;
+  created_at: string;
+  updated_at: string;
 };
 
 export type Patient = {

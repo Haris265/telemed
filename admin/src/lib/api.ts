@@ -3,6 +3,7 @@ import type {
   DashboardStats,
   Doctor,
   DoctorAvailability,
+  DoctorSubscription,
   Paginated,
   Patient,
   PatientDetail,
@@ -189,6 +190,47 @@ export const api = {
     }),
   deleteAppointment: (id: number) =>
     request<void>(`/api/admin/appointments/${id}/`, { method: "DELETE" }),
+  subscriptions: (params: Record<string, string> = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return request<Paginated<DoctorSubscription> | DoctorSubscription[]>(
+      `/api/admin/subscriptions/${qs ? `?${qs}` : ""}`,
+    );
+  },
+  createSubscription: (payload: {
+    doctor: number;
+    amount: number | string;
+    start_date: string;
+    end_date: string;
+    payment_method?: "cash";
+    is_active?: boolean;
+    notes?: string;
+  }) =>
+    request<DoctorSubscription>("/api/admin/subscriptions/", {
+      method: "POST",
+      body: JSON.stringify({ payment_method: "cash", ...payload }),
+    }),
+  updateSubscription: (
+    uuid: string,
+    payload: Partial<{
+      amount: number | string;
+      start_date: string;
+      end_date: string;
+      is_active: boolean;
+      notes: string;
+      payment_method: "cash";
+    }>,
+  ) =>
+    request<DoctorSubscription>(`/api/admin/subscriptions/${uuid}/`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  deleteSubscription: (uuid: string) =>
+    request<void>(`/api/admin/subscriptions/${uuid}/`, { method: "DELETE" }),
+  deactivateUnsubscribedDoctors: () =>
+    request<{ deactivated_count: number; doctor_ids: number[] }>(
+      "/api/admin/subscriptions/deactivate-unsubscribed/",
+      { method: "POST" },
+    ),
 };
 
 export function unwrapList<T>(data: Paginated<T> | T[]): T[] {

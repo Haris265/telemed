@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 import uuid
 
 
@@ -50,6 +51,63 @@ class DoctorProfile(models.Model):
     @property
     def full_name(self):
         return f"{self.first_name} {self.last_name}".strip()
+
+    def has_active_subscription(self) -> bool:
+        today = timezone.localdate()
+        return self.subscriptions.filter(
+            is_active=True,
+            start_date__lte=today,
+            end_date__gte=today,
+        ).exists()
+
+    @property
+    def subscription_status(self) -> str:
+        today = timezone.localdate()
+        active = self.subscriptions.filter(
+            is_active=True,
+            start_date__lte=today,
+            end_date__gte=today,
+        ).exists()
+        if active:
+            return "subscribed"
+        if self.subscriptions.exists():
+            return "expired"
+        return "none"
+
+
+class DoctorSubscription(models.Model):
+    class PaymentMethod(models.TextChoices):
+        CASH = "cash", "Cash"
+
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
+    doctor = models.ForeignKey(
+        DoctorProfile,
+        on_delete=models.CASCADE,
+        related_name="subscriptions",
+    )
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    payment_method = models.CharField(
+        max_length=20,
+        choices=PaymentMethod.choices,
+        default=PaymentMethod.CASH,
+    )
+    start_date = models.DateField()
+    end_date = models.DateField()
+    is_active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        return f"{self.doctor} ({self.start_date} → {self.end_date})"
+
+    @property
+    def is_currently_valid(self) -> bool:
+        today = timezone.localdate()
+        return self.is_active and self.start_date <= today <= self.end_date
 
 
 class DoctorAvailability(models.Model):

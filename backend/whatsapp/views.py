@@ -35,12 +35,29 @@ def _verify_signature(request) -> bool:
     return hmac.compare_digest(signature[7:], expected)
 
 
+def _contacts_by_wa_id(value: dict[str, Any]) -> dict[str, str]:
+    """Map WhatsApp id → display name from Meta contacts payload."""
+    out: dict[str, str] = {}
+    for contact in value.get("contacts", []) or []:
+        wa_id = str(contact.get("wa_id") or "").strip()
+        name = ((contact.get("profile") or {}).get("name") or "").strip()
+        if wa_id and name:
+            out[wa_id] = name
+    return out
+
+
 def _extract_messages(payload: dict[str, Any]) -> list[dict[str, Any]]:
     messages = []
     for entry in payload.get("entry", []):
         for change in entry.get("changes", []):
             value = change.get("value", {})
+            names = _contacts_by_wa_id(value)
             for msg in value.get("messages", []) or []:
+                # Attach WhatsApp profile name so FSM can store PatientProfile.name
+                from_id = str(msg.get("from") or "").strip()
+                profile_name = names.get(from_id, "")
+                if profile_name:
+                    msg = {**msg, "profile_name": profile_name}
                 messages.append(msg)
     return messages
 
@@ -93,6 +110,7 @@ class WhatsAppSimulateView(APIView):
 
         phone = str(request.data.get("phone", "")).strip()
         text = str(request.data.get("text", "")).strip()
+        profile_name = str(request.data.get("profile_name", "")).strip()
         if not phone or not text:
             return Response(
                 {"detail": "phone and text are required"},
@@ -112,5 +130,7 @@ class WhatsAppSimulateView(APIView):
             "type": "text",
             "text": {"body": text},
         }
+        if profile_name:
+            msg["profile_name"] = profile_name
         handle_inbound_message(msg, CaptureClient())
         return Response({"replies": replies})

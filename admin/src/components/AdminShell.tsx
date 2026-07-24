@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, useEffect, useState } from "react";
 import {
   CalendarDays,
+  CreditCard,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -21,6 +22,7 @@ const NAV = [
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/specialities", label: "Specialities", icon: HeartPulse },
   { href: "/admin/doctors", label: "Doctors", icon: Stethoscope },
+  { href: "/admin/subscriptions", label: "Subscriptions", icon: CreditCard },
   { href: "/admin/patients", label: "Patients", icon: Users },
   { href: "/admin/appointments", label: "Appointments", icon: CalendarDays },
 ];

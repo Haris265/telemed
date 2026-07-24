@@ -8,7 +8,10 @@ from appointments.views import (
 )
 
 from .views import (
+    AdminDeactivateUnsubscribedDoctorsView,
     AdminDoctorAvailabilityListView,
+    AdminSubscriptionDetailView,
+    AdminSubscriptionListCreateView,
     DashboardStatsView,
     DoctorAppointmentListView,
     DoctorAvailabilityListCreateView,
@@ -35,6 +38,21 @@ urlpatterns = [
         name="admin-doctor-availability",
     ),
     path("doctors/<uuid:uuid>/", DoctorDetailView.as_view(), name="admin-doctor-detail"),
+    path(
+        "subscriptions/",
+        AdminSubscriptionListCreateView.as_view(),
+        name="admin-subscriptions",
+    ),
+    path(
+        "subscriptions/deactivate-unsubscribed/",
+        AdminDeactivateUnsubscribedDoctorsView.as_view(),
+        name="admin-deactivate-unsubscribed",
+    ),
+    path(
+        "subscriptions/<uuid:uuid>/",
+        AdminSubscriptionDetailView.as_view(),
+        name="admin-subscription-detail",
+    ),
     path("patients/", AdminPatientListView.as_view(), name="admin-patients"),
     path(
         "patients/<uuid:uuid>/",

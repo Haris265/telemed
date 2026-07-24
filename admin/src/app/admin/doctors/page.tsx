@@ -209,6 +209,7 @@ export default function DoctorsPage() {
                 <th className="px-5 py-3 font-medium">Doctor</th>
                 <th className="px-5 py-3 font-medium">Specialities</th>
                 <th className="px-5 py-3 font-medium">Session</th>
+                <th className="px-5 py-3 font-medium">Subscription</th>
                 <th className="px-5 py-3 font-medium">Status</th>
                 <th className="px-5 py-3 font-medium">Actions</th>
               </tr>
@@ -230,6 +231,23 @@ export default function DoctorsPage() {
                     </div>
                   </td>
                   <td className="px-5 py-3">{d.session_time} min</td>
+                  <td className="px-5 py-3">
+                    <Badge
+                      tone={
+                        d.subscription_status === "subscribed"
+                          ? "success"
+                          : d.subscription_status === "expired"
+                            ? "warning"
+                            : "danger"
+                      }
+                    >
+                      {d.subscription_status === "subscribed"
+                        ? "Subscribed"
+                        : d.subscription_status === "expired"
+                          ? "Expired"
+                          : "No subscription"}
+                    </Badge>
+                  </td>
                   <td className="px-5 py-3">
                     <Badge tone={d.is_active ? "success" : "neutral"}>
                       {d.is_active ? "Active" : "Inactive"}

@@ -30,6 +30,16 @@ def _normalize_phone(phone: str) -> str:
     return "".join(ch for ch in phone if ch.isdigit())
 
 
+def _clean_patient_name(value: str) -> str:
+    name = re.sub(r"\s+", " ", (value or "").strip())
+    if len(name) < 2:
+        return ""
+    # Reject pure digits / phone-like placeholders
+    if name.isdigit():
+        return ""
+    return name[:150]
+
+
 def _get_or_create_session(phone: str) -> WhatsAppSession:
     session, _ = WhatsAppSession.objects.get_or_create(phone=phone)
     return session
@@ -406,11 +416,19 @@ def handle_inbound_message(msg: dict, client) -> None:
         return
 
     patient = PatientProfile.objects.filter(phone=phone).first()
+    profile_name = _clean_patient_name(str(msg.get("profile_name") or ""))
+
+    # Refresh empty/placeholder names from WhatsApp profile when available
+    if patient and profile_name:
+        current = _clean_patient_name(patient.name)
+        if not current or current == phone:
+            patient.name = profile_name
+            patient.save(update_fields=["name", "updated_at"])
 
     if not patient:
         if session.state == WhatsAppSession.State.AWAITING_NAME:
-            name = text.strip()
-            if len(name) < 2:
+            name = _clean_patient_name(text)
+            if not name:
                 client.send_text(phone, "Please send your full name (at least 2 characters).")
                 return
             PatientProfile.objects.create(phone=phone, name=name)
@@ -418,6 +436,16 @@ def handle_inbound_message(msg: dict, client) -> None:
             client.send_text(
                 phone,
                 f"Thanks {name}! Your Telemed profile is ready.\n\n{MENU_TEXT}",
+            )
+            return
+
+        # Prefer WhatsApp profile name linked to this number
+        if profile_name:
+            PatientProfile.objects.create(phone=phone, name=profile_name)
+            _reset_to_menu(session)
+            client.send_text(
+                phone,
+                f"Welcome {profile_name}! Your Telemed profile is ready.\n\n{MENU_TEXT}",
             )
             return
 

@@ -74,7 +74,7 @@ export default function DoctorDetailPage() {
       ) : doctor ? (
         <>
           <Card className="p-5">
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
               <div>
                 <p className="text-xs uppercase tracking-wide text-slate-400">Email</p>
                 <p className="mt-1 font-medium text-slate-100">{doctor.email}</p>
@@ -82,6 +82,26 @@ export default function DoctorDetailPage() {
               <div>
                 <p className="text-xs uppercase tracking-wide text-slate-400">Session</p>
                 <p className="mt-1 font-medium text-slate-100">{doctor.session_time} min</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-wide text-slate-400">Subscription</p>
+                <div className="mt-1">
+                  <Badge
+                    tone={
+                      doctor.subscription_status === "subscribed"
+                        ? "success"
+                        : doctor.subscription_status === "expired"
+                          ? "warning"
+                          : "danger"
+                    }
+                  >
+                    {doctor.subscription_status === "subscribed"
+                      ? "Subscribed"
+                      : doctor.subscription_status === "expired"
+                        ? "Expired"
+                        : "No subscription"}
+                  </Badge>
+                </div>
               </div>
               <div>
                 <p className="text-xs uppercase tracking-wide text-slate-400">Status</p>

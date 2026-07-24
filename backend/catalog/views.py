@@ -9,11 +9,12 @@ from appointments.models import Appointment
 from appointments.serializers import AppointmentSerializer
 from patients.models import PatientProfile
 
-from .models import DoctorAvailability, DoctorProfile, Speciality
+from .models import DoctorAvailability, DoctorProfile, DoctorSubscription, Speciality
 from .serializers import (
     DoctorAvailabilitySerializer,
     DoctorOnboardingSerializer,
     DoctorProfileSerializer,
+    DoctorSubscriptionSerializer,
     SpecialitySerializer,
 )
 
@@ -88,7 +89,10 @@ class DoctorListView(generics.ListAPIView):
     serializer_class = DoctorProfileSerializer
 
     def get_queryset(self):
-        qs = DoctorProfile.objects.select_related("user").prefetch_related("specialities")
+        qs = DoctorProfile.objects.select_related("user").prefetch_related(
+            "specialities",
+            "subscriptions",
+        )
         q = self.request.query_params.get("q")
         if q:
             qs = qs.filter(
@@ -108,7 +112,10 @@ class DoctorListView(generics.ListAPIView):
 class DoctorDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAdmin]
     serializer_class = DoctorProfileSerializer
-    queryset = DoctorProfile.objects.select_related("user").prefetch_related("specialities")
+    queryset = DoctorProfile.objects.select_related("user").prefetch_related(
+        "specialities",
+        "subscriptions",
+    )
     lookup_field = "uuid"
     lookup_url_kwarg = "uuid"
 
@@ -116,6 +123,66 @@ class DoctorDetailView(generics.RetrieveUpdateDestroyAPIView):
         # Cascade removes DoctorProfile via OneToOne; drop login account too.
         user = instance.user
         user.delete()
+
+
+class AdminSubscriptionListCreateView(generics.ListCreateAPIView):
+    permission_classes = [IsAdmin]
+    serializer_class = DoctorSubscriptionSerializer
+
+    def get_queryset(self):
+        qs = DoctorSubscription.objects.select_related("doctor", "doctor__user")
+        q = self.request.query_params.get("q")
+        doctor = self.request.query_params.get("doctor")
+        active = self.request.query_params.get("is_active")
+        valid = self.request.query_params.get("valid")
+        if q:
+            qs = qs.filter(
+                Q(doctor__first_name__icontains=q)
+                | Q(doctor__last_name__icontains=q)
+                | Q(doctor__user__email__icontains=q)
+            )
+        if doctor:
+            qs = qs.filter(doctor_id=doctor)
+        if active is not None:
+            qs = qs.filter(is_active=active.lower() in ("1", "true", "yes"))
+        if valid is not None:
+            today = timezone.localdate()
+            if valid.lower() in ("1", "true", "yes"):
+                qs = qs.filter(is_active=True, start_date__lte=today, end_date__gte=today)
+            else:
+                qs = qs.exclude(is_active=True, start_date__lte=today, end_date__gte=today)
+        return qs.order_by("-created_at", "-id")
+
+
+class AdminSubscriptionDetailView(generics.RetrieveUpdateDestroyAPIView):
+    permission_classes = [IsAdmin]
+    serializer_class = DoctorSubscriptionSerializer
+    queryset = DoctorSubscription.objects.select_related("doctor", "doctor__user")
+    lookup_field = "uuid"
+    lookup_url_kwarg = "uuid"
+
+
+class AdminDeactivateUnsubscribedDoctorsView(APIView):
+    """Deactivate doctors who currently have no valid cash subscription."""
+
+    permission_classes = [IsAdmin]
+
+    def post(self, request):
+        today = timezone.localdate()
+        active_sub_doctor_ids = DoctorSubscription.objects.filter(
+            is_active=True,
+            start_date__lte=today,
+            end_date__gte=today,
+        ).values_list("doctor_id", flat=True)
+        qs = DoctorProfile.objects.filter(is_active=True).exclude(id__in=active_sub_doctor_ids)
+        deactivated = list(qs.values_list("id", flat=True))
+        updated = qs.update(is_active=False)
+        return Response(
+            {
+                "deactivated_count": updated,
+                "doctor_ids": deactivated,
+            }
+        )
 
 
 class DoctorAvailabilityListCreateView(generics.ListCreateAPIView):

@@ -2,7 +2,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from rest_framework import serializers
 
-from .models import DoctorAvailability, DoctorProfile, Speciality
+from .models import DoctorAvailability, DoctorProfile, DoctorSubscription, Speciality
 
 User = get_user_model()
 
@@ -75,6 +75,8 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
         required=False,
     )
     full_name = serializers.CharField(read_only=True)
+    has_active_subscription = serializers.SerializerMethodField()
+    subscription_status = serializers.CharField(read_only=True)
 
     class Meta:
         model = DoctorProfile
@@ -89,9 +91,14 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
             "speciality_ids",
             "session_time",
             "is_active",
+            "has_active_subscription",
+            "subscription_status",
             "created_at",
         )
         read_only_fields = ("uuid", "created_at")
+
+    def get_has_active_subscription(self, obj):
+        return obj.has_active_subscription()
 
     def validate_speciality_ids(self, value):
         if not value:
@@ -107,6 +114,58 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
         if speciality_ids is not None:
             instance.specialities.set(speciality_ids)
         return instance
+
+
+class DoctorSubscriptionSerializer(serializers.ModelSerializer):
+    doctor_name = serializers.CharField(source="doctor.full_name", read_only=True)
+    doctor_uuid = serializers.UUIDField(source="doctor.uuid", read_only=True)
+    doctor_email = serializers.EmailField(source="doctor.user.email", read_only=True)
+    is_currently_valid = serializers.BooleanField(read_only=True)
+    payment_method = serializers.ChoiceField(
+        choices=DoctorSubscription.PaymentMethod.choices,
+        default=DoctorSubscription.PaymentMethod.CASH,
+    )
+
+    class Meta:
+        model = DoctorSubscription
+        fields = (
+            "id",
+            "uuid",
+            "doctor",
+            "doctor_uuid",
+            "doctor_name",
+            "doctor_email",
+            "amount",
+            "payment_method",
+            "start_date",
+            "end_date",
+            "is_active",
+            "is_currently_valid",
+            "notes",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("uuid", "created_at", "updated_at")
+
+    def validate(self, attrs):
+        start = attrs.get("start_date") or getattr(self.instance, "start_date", None)
+        end = attrs.get("end_date") or getattr(self.instance, "end_date", None)
+        if start and end and end < start:
+            raise serializers.ValidationError({"end_date": "end_date must be on or after start_date."})
+        payment = attrs.get("payment_method", DoctorSubscription.PaymentMethod.CASH)
+        if payment != DoctorSubscription.PaymentMethod.CASH:
+            raise serializers.ValidationError({"payment_method": "Only cash payments are supported."})
+        return attrs
+
+    def create(self, validated_data):
+        validated_data["payment_method"] = DoctorSubscription.PaymentMethod.CASH
+        subscription = super().create(validated_data)
+        # Cash subscription received → keep doctor active
+        doctor = subscription.doctor
+        if not doctor.is_active:
+            doctor.is_active = True
+            doctor.save(update_fields=["is_active"])
+        return subscription
 
 
 class DoctorAvailabilitySerializer(serializers.ModelSerializer):
