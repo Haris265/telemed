@@ -10,6 +10,7 @@ urlpatterns = [
     path("api/auth/", include("accounts.urls")),
     path("api/admin/", include("catalog.urls")),
     path("api/doctor/", include((doctor_urlpatterns, "doctor"))),
+    path("api/patient/", include("patients.urls")),
     path("api/whatsapp/", include("whatsapp.urls")),
 ]
 

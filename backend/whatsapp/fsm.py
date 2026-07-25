@@ -2,14 +2,13 @@ import logging
 import random
 import re
 import string
-from datetime import date, datetime, time, timedelta
+from datetime import date, time
 
 from django.core.cache import cache
-from django.db import transaction
-from django.db.models import Max
 from django.utils import timezone
 
 from appointments.models import Appointment
+from appointments.services import book_token, format_clock, upcoming_available_dates
 from catalog.models import DoctorAvailability, DoctorProfile, Speciality
 from patients.models import PatientProfile
 
@@ -111,10 +110,6 @@ def _active_doctors_all():
     )
 
 
-def _format_time(t: time) -> str:
-    return t.strftime("%I:%M %p").lstrip("0")
-
-
 def _format_availability(doctor: DoctorProfile) -> str:
     slots = list(
         DoctorAvailability.objects.filter(doctor=doctor, is_active=True).order_by(
@@ -128,7 +123,7 @@ def _format_availability(doctor: DoctorProfile) -> str:
     for slot in slots:
         lines.append(
             f"• {slot.get_weekday_display()}: "
-            f"{_format_time(slot.start_time)} – {_format_time(slot.end_time)}"
+            f"{format_clock(slot.start_time)} – {format_clock(slot.end_time)}"
         )
     return "\n".join(lines)
 
@@ -139,47 +134,7 @@ def _upcoming_available_dates(
     days_ahead: int = 21,
     limit: int = 10,
 ) -> list[dict]:
-    """Return upcoming dates matching doctor's active weekday availability."""
-    today = timezone.localdate()
-    slots = list(
-        DoctorAvailability.objects.filter(doctor=doctor, is_active=True).order_by(
-            "weekday", "start_time"
-        )
-    )
-    by_weekday: dict[int, list[DoctorAvailability]] = {}
-    for slot in slots:
-        by_weekday.setdefault(slot.weekday, []).append(slot)
-
-    options: list[dict] = []
-    for offset in range(0, days_ahead + 1):
-        day = today + timedelta(days=offset)
-        weekday = day.weekday()  # Mon=0 .. Sun=6 (matches DoctorAvailability)
-        day_slots = by_weekday.get(weekday)
-        if day_slots:
-            slot = day_slots[0]
-            options.append(
-                {
-                    "date": day.isoformat(),
-                    "label": day.strftime("%a %d %b %Y"),
-                    "start": slot.start_time.strftime("%H:%M:%S"),
-                    "end": slot.end_time.strftime("%H:%M:%S"),
-                    "timing": f"{_format_time(slot.start_time)} – {_format_time(slot.end_time)}",
-                }
-            )
-        elif not slots and offset < 7:
-            # No schedule configured: offer next 7 calendar days
-            options.append(
-                {
-                    "date": day.isoformat(),
-                    "label": day.strftime("%a %d %b %Y"),
-                    "start": "09:00:00",
-                    "end": "17:00:00",
-                    "timing": "9:00 AM – 5:00 PM (default)",
-                }
-            )
-        if len(options) >= limit:
-            break
-    return options
+    return upcoming_available_dates(doctor, days_ahead=days_ahead, limit=limit)
 
 
 def _format_date_options(doctor: DoctorProfile, options: list[dict]) -> str:
@@ -242,44 +197,13 @@ def _book_token_for_date(
     token_date: date,
     start_time: time | None = None,
 ) -> Appointment:
-    with transaction.atomic():
-        existing = (
-            Appointment.objects.select_for_update()
-            .filter(
-                patient=patient,
-                doctor=doctor,
-                token_date=token_date,
-                status=Appointment.Status.UPCOMING,
-            )
-            .first()
-        )
-        if existing:
-            raise ValueError(
-                f"You already have Token {existing.token_code} "
-                f"with Dr. {doctor.full_name} on {token_date.strftime('%d %b %Y')}."
-            )
-
-        locked = (
-            Appointment.objects.select_for_update()
-            .filter(doctor=doctor, token_date=token_date)
-            .aggregate(m=Max("token_number"))
-        )
-        next_token = (locked["m"] or 0) + 1
-
-        base = datetime.combine(token_date, start_time or time(9, 0))
-        if timezone.is_naive(base):
-            base = timezone.make_aware(base, timezone.get_current_timezone())
-        scheduled_at = base + timedelta(minutes=doctor.session_time * (next_token - 1))
-
-        return Appointment.objects.create(
-            patient=patient,
-            doctor=doctor,
-            scheduled_at=scheduled_at,
-            token_date=token_date,
-            token_number=next_token,
-            status=Appointment.Status.UPCOMING,
-            notes="Booked via WhatsApp",
-        )
+    return book_token(
+        patient,
+        doctor,
+        token_date,
+        start_time,
+        notes="Booked via WhatsApp",
+    )
 
 
 def _reset_to_menu(session: WhatsAppSession) -> None:
