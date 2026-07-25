@@ -76,4 +76,5 @@ export type ClinicInfo = {
   whatsapp_number: string;
   whatsapp_link: string;
   book_prefill: string;
+  webhook_path?: string;
 };

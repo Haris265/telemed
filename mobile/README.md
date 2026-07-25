@@ -7,8 +7,14 @@ npm install
 npx expo start
 ```
 
-Set `EXPO_PUBLIC_API_URL` in `mobile/.env` to your Django API (use your LAN IP for a physical device, e.g. `http://192.168.1.10:8000`).
+Set `EXPO_PUBLIC_API_URL` in `mobile/.env` to your Django API base URL (no trailing slash), e.g. a Dev Tunnel:
 
-Backend must be running. In DEBUG, OTP is returned in the request-otp response for local testing.
+```
+EXPO_PUBLIC_API_URL=https://xknm9jsn-8000.inc1.devtunnels.ms
+```
+
+After changing `.env`, restart Expo with cache clear: `npx expo start --clear`.
+
+Backend must be running and reachable at that URL. In DEBUG, OTP is returned in the request-otp response for local testing.
 
 Configure `CLINIC_WHATSAPP_NUMBER` in the repo root `.env` for the “Book on WhatsApp” deep link.

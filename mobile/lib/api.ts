@@ -8,7 +8,9 @@ import type {
   Speciality,
 } from "./types";
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL = (
+  process.env.EXPO_PUBLIC_API_URL || "https://xknm9jsn-8000.inc1.devtunnels.ms"
+).replace(/\/+$/, "");
 
 const ACCESS_KEY = "telemed_patient_access";
 const REFRESH_KEY = "telemed_patient_refresh";
@@ -54,12 +56,13 @@ async function request<T>(
     if (token) headers.set("Authorization", `Bearer ${token}`);
   }
 
+  const url = `${API_URL}${path.startsWith("/") ? path : `/${path}`}`;
   let res: Response;
   try {
-    res = await fetch(`${API_URL}${path}`, { ...options, headers });
+    res = await fetch(url, { ...options, headers });
   } catch {
     throw new Error(
-      `Network failed. Cannot reach API at ${API_URL}. Use your PC LAN IP (not localhost) and ensure Django is running on 0.0.0.0:8000.`,
+      `Cannot reach server. Check your internet and that the API is online.\n(${API_URL})`,
     );
   }
   const text = await res.text();

@@ -11,6 +11,7 @@ export default function HomeScreen() {
   const { patient } = useAuth();
   const router = useRouter();
   const [waError, setWaError] = useState("");
+  const [waLoading, setWaLoading] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -20,14 +21,19 @@ export default function HomeScreen() {
 
   async function openWhatsApp() {
     setWaError("");
+    setWaLoading(true);
     try {
+      // Uses patient clinic API: /api/patient/clinic/
       const clinic = await api.clinic();
-      if (!clinic.whatsapp_number) {
-        setWaError("Clinic WhatsApp number is not configured yet.");
+      let url = (clinic.whatsapp_link || "").trim();
+      if (!url && clinic.whatsapp_number) {
+        const text = encodeURIComponent(clinic.book_prefill || "2");
+        url = `https://wa.me/${clinic.whatsapp_number}?text=${text}`;
+      }
+      if (!url) {
+        setWaError("Clinic WhatsApp bot is not configured yet.");
         return;
       }
-      const text = encodeURIComponent(clinic.book_prefill || "2");
-      const url = `https://wa.me/${clinic.whatsapp_number}?text=${text}`;
       const can = await Linking.canOpenURL(url);
       if (!can) {
         setWaError("Unable to open WhatsApp on this device.");
@@ -36,6 +42,8 @@ export default function HomeScreen() {
       await Linking.openURL(url);
     } catch (e) {
       setWaError(e instanceof Error ? e.message : "WhatsApp link failed");
+    } finally {
+      setWaLoading(false);
     }
   }
 
@@ -65,7 +73,12 @@ export default function HomeScreen() {
           <Text style={styles.cardBody}>
             Opens the clinic WhatsApp bot to book with the same token queue.
           </Text>
-          <Button label="Open WhatsApp bot" variant="secondary" onPress={openWhatsApp} />
+          <Button
+            label="Open WhatsApp bot"
+            variant="secondary"
+            onPress={openWhatsApp}
+            loading={waLoading}
+          />
           {waError ? <Text style={styles.error}>{waError}</Text> : null}
         </Card>
 

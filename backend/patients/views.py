@@ -42,11 +42,18 @@ class ClinicInfoView(APIView):
     def get(self, request):
         number = (settings.CLINIC_WHATSAPP_NUMBER or "").strip()
         digits = "".join(ch for ch in number if ch.isdigit())
+        if not digits:
+            digits = MetaWhatsAppClient().get_display_phone_digits()
+        prefill = "2"
+        link = f"https://wa.me/{digits}" if digits else ""
+        if link and prefill:
+            link = f"{link}?text={prefill}"
         return Response(
             {
                 "whatsapp_number": digits,
-                "whatsapp_link": f"https://wa.me/{digits}" if digits else "",
-                "book_prefill": "2",
+                "whatsapp_link": link,
+                "book_prefill": prefill,
+                "webhook_path": "/api/whatsapp/webhook/",
             }
         )
 
