@@ -3,13 +3,13 @@ import {
   ActivityIndicator,
   Alert,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { useFocusEffect } from "expo-router";
+import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 
 import { Badge, Button, Card, Empty, ErrorText, Screen, Subtitle, Title } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -26,12 +26,12 @@ export default function BookDoctorScreen() {
   const [dates, setDates] = useState<DateOption[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [booking, setBooking] = useState(false);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
     if (!doctorUuid) return;
-    setLoading(true);
     setError("");
     try {
       const data = await api.doctorAvailability(String(doctorUuid));
@@ -42,11 +42,13 @@ export default function BookDoctorScreen() {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [doctorUuid]);
 
   useFocusEffect(
     useCallback(() => {
+      setLoading(true);
       load();
     }, [load]),
   );
@@ -57,16 +59,12 @@ export default function BookDoctorScreen() {
     setError("");
     try {
       const res = await api.book(doctor.uuid, selected);
-      Alert.alert(
-        "Booked!",
-        res.queue.message,
-        [
-          {
-            text: "View queue",
-            onPress: () => router.replace(`/appointment/${res.appointment.id}`),
-          },
-        ],
-      );
+      Alert.alert("Booked!", res.queue.message, [
+        {
+          text: "View queue",
+          onPress: () => router.replace(`/appointment/${res.appointment.id}`),
+        },
+      ]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Booking failed");
     } finally {
@@ -74,7 +72,7 @@ export default function BookDoctorScreen() {
     }
   }
 
-  if (loading) {
+  if (loading && !doctor) {
     return (
       <Screen>
         <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />
@@ -85,15 +83,44 @@ export default function BookDoctorScreen() {
   if (!doctor) {
     return (
       <Screen>
-        <Empty title="Doctor not found" />
-        <ErrorText>{error}</ErrorText>
+        <ScrollView
+          contentContainerStyle={{ paddingBottom: 40 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+              onRefresh={() => {
+                setRefreshing(true);
+                setLoading(true);
+                load();
+              }}
+            />
+          }
+        >
+          <Empty title="Doctor not found" />
+          <ErrorText>{error}</ErrorText>
+        </ScrollView>
       </Screen>
     );
   }
 
   return (
     <Screen>
-      <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: 40 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+            onRefresh={() => {
+              setRefreshing(true);
+              load();
+            }}
+          />
+        }
+      >
         <Title>Dr. {doctor.full_name}</Title>
         <Subtitle>{doctor.session_time} min sessions</Subtitle>
         <ErrorText>{error}</ErrorText>

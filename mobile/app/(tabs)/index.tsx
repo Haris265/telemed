@@ -1,5 +1,12 @@
 import { useCallback, useState } from "react";
-import { Linking, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  Linking,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 
 import { Button, Card, Screen, Subtitle, Title } from "@/components/ui";
@@ -8,10 +15,11 @@ import { useAuth } from "@/lib/auth";
 import { colors } from "@/constants/theme";
 
 export default function HomeScreen() {
-  const { patient } = useAuth();
+  const { patient, refreshMe } = useAuth();
   const router = useRouter();
   const [waError, setWaError] = useState("");
   const [waLoading, setWaLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -19,11 +27,22 @@ export default function HomeScreen() {
     }, []),
   );
 
+  async function onRefresh() {
+    setRefreshing(true);
+    setWaError("");
+    try {
+      await refreshMe();
+    } catch {
+      // stay signed in with cached profile
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   async function openWhatsApp() {
     setWaError("");
     setWaLoading(true);
     try {
-      // Uses patient clinic API: /api/patient/clinic/
       const clinic = await api.clinic();
       let url = (clinic.whatsapp_link || "").trim();
       if (!url && clinic.whatsapp_number) {
@@ -49,8 +68,20 @@ export default function HomeScreen() {
 
   return (
     <Screen>
-      <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
-        <Text style={styles.hello}>Hello{patient?.name ? `, ${patient.name.split(" ")[0]}` : ""}</Text>
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: 32 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+            onRefresh={onRefresh}
+          />
+        }
+      >
+        <Text style={styles.hello}>
+          Hello{patient?.name ? `, ${patient.name.split(" ")[0]}` : ""}
+        </Text>
         <Title>Clinic care, on your phone</Title>
         <Subtitle>
           Book a token in the app, check doctor hours, or continue on WhatsApp.
@@ -89,7 +120,11 @@ export default function HomeScreen() {
           <Text style={styles.cardBody}>
             Enter today’s token number to see who’s being served and your wait time.
           </Text>
-          <Button label="Open live queue" variant="secondary" onPress={() => router.push("/(tabs)/queue")} />
+          <Button
+            label="Open live queue"
+            variant="secondary"
+            onPress={() => router.push("/(tabs)/queue")}
+          />
         </Card>
       </ScrollView>
     </Screen>

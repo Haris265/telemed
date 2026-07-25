@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  RefreshControl,
   StyleSheet,
   View,
 } from "react-native";
@@ -22,10 +23,10 @@ export default function DoctorsScreen() {
   const [query, setQuery] = useState("");
   const [filterId, setFilterId] = useState("all");
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
-    setLoading(true);
     setError("");
     try {
       const [docs, specs] = await Promise.all([api.doctors(), api.specialities()]);
@@ -35,14 +36,21 @@ export default function DoctorsScreen() {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, []);
 
   useFocusEffect(
     useCallback(() => {
+      setLoading(true);
       load();
     }, [load]),
   );
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    load();
+  }, [load]);
 
   const filterOptions = useMemo(
     () => [
@@ -69,50 +77,62 @@ export default function DoctorsScreen() {
 
   return (
     <Screen>
-      <Title>Doctors</Title>
-      <Subtitle>Search and filter clinicians, then pick a date.</Subtitle>
-      <ErrorText>{error}</ErrorText>
-
-      {loading ? (
-        <ActivityIndicator color={colors.primary} style={{ marginTop: 24 }} />
-      ) : (
-        <FlatList
-          data={filtered}
-          keyExtractor={(d) => d.uuid}
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ paddingTop: 14, paddingBottom: 40 }}
-          ListHeaderComponent={
-            <View style={styles.toolbar}>
-              <SearchField
-                value={query}
-                onChangeText={setQuery}
-                placeholder="Search by name or speciality…"
-              />
-              <FilterChips
-                options={filterOptions}
-                selectedId={filterId}
-                onSelect={setFilterId}
-              />
-              <ResultCount
-                label={`${filtered.length} of ${doctors.length} doctor${doctors.length === 1 ? "" : "s"}`}
-              />
-            </View>
-          }
-          ListEmptyComponent={
+      <FlatList
+        data={loading ? [] : filtered}
+        keyExtractor={(d) => d.uuid}
+        style={{ flex: 1 }}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ paddingBottom: 40 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+            onRefresh={onRefresh}
+          />
+        }
+        ListHeaderComponent={
+          <View style={{ gap: 12, marginBottom: 8 }}>
+            <Title>Doctors</Title>
+            <Subtitle>Search and filter clinicians, then pick a date.</Subtitle>
+            <ErrorText>{error}</ErrorText>
+            {loading ? (
+              <ActivityIndicator color={colors.primary} style={{ marginVertical: 16 }} />
+            ) : (
+              <View style={styles.toolbar}>
+                <SearchField
+                  value={query}
+                  onChangeText={setQuery}
+                  placeholder="Search by name or speciality…"
+                />
+                <FilterChips
+                  options={filterOptions}
+                  selectedId={filterId}
+                  onSelect={setFilterId}
+                />
+                <ResultCount
+                  label={`${filtered.length} of ${doctors.length} doctor${doctors.length === 1 ? "" : "s"}`}
+                />
+              </View>
+            )}
+          </View>
+        }
+        ListEmptyComponent={
+          loading ? null : (
             <Empty
               title="No doctors match"
               body="Try clearing search or choosing another filter."
             />
-          }
-          renderItem={({ item }) => (
-            <DoctorCard
-              doctor={item}
-              actionLabel="View"
-              onPress={() => router.push(`/book/${item.uuid}`)}
-            />
-          )}
-        />
-      )}
+          )
+        }
+        renderItem={({ item }) => (
+          <DoctorCard
+            doctor={item}
+            actionLabel="View"
+            onPress={() => router.push(`/book/${item.uuid}`)}
+          />
+        )}
+      />
     </Screen>
   );
 }

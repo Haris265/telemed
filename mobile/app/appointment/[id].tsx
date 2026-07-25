@@ -84,6 +84,7 @@ export default function AppointmentQueueScreen() {
           <RefreshControl
             refreshing={refreshing}
             tintColor={colors.primary}
+            colors={[colors.primary]}
             onRefresh={() => {
               setRefreshing(true);
               load();

@@ -133,6 +133,7 @@ export default function QueueScreen() {
           <RefreshControl
             refreshing={refreshing}
             tintColor={colors.primary}
+            colors={[colors.primary]}
             onRefresh={() => {
               setRefreshing(true);
               loadList();

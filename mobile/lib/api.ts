@@ -9,7 +9,7 @@ import type {
 } from "./types";
 
 const API_URL = (
-  process.env.EXPO_PUBLIC_API_URL || "https://xknm9jsn-8000.inc1.devtunnels.ms"
+  process.env.EXPO_PUBLIC_API_URL || "https://zl5w76gd-8000.inc1.devtunnels.ms"
 ).replace(/\/+$/, "");
 
 const ACCESS_KEY = "telemed_patient_access";

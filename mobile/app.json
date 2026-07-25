@@ -8,9 +8,12 @@
     "scheme": "telemed",
     "userInterfaceStyle": "dark",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.telemed.patient"
     },
     "android": {
+      "package": "com.telemed.patient",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#0b1220",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

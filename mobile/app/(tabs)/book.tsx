@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  RefreshControl,
   StyleSheet,
   Text,
   View,
@@ -28,10 +29,10 @@ export default function BookScreen() {
   const [sort, setSort] = useState<SortFilter>("all");
   const [loading, setLoading] = useState(true);
   const [loadingDocs, setLoadingDocs] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
 
   const loadSpecs = useCallback(async () => {
-    setLoading(true);
     setError("");
     try {
       setSpecialities(await api.specialities());
@@ -39,14 +40,34 @@ export default function BookScreen() {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
       setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  const reloadDoctors = useCallback(async (id: number) => {
+    setLoadingDocs(true);
+    setError("");
+    try {
+      setDoctors(await api.doctors(id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load doctors");
+    } finally {
+      setLoadingDocs(false);
     }
   }, []);
 
   useFocusEffect(
     useCallback(() => {
+      setLoading(true);
       loadSpecs();
     }, [loadSpecs]),
   );
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadSpecs();
+    if (selected != null) await reloadDoctors(selected);
+  }, [loadSpecs, reloadDoctors, selected]);
 
   const filteredSpecs = useMemo(() => {
     const q = specQuery.trim().toLowerCase();
@@ -75,67 +96,72 @@ export default function BookScreen() {
     }
     setSelected(id);
     setDocQuery("");
-    setLoadingDocs(true);
-    setError("");
-    try {
-      setDoctors(await api.doctors(id));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load doctors");
-    } finally {
-      setLoadingDocs(false);
-    }
+    await reloadDoctors(id);
   }
 
   const selectedName = specialities.find((s) => s.id === selected)?.name;
 
   return (
     <Screen>
-      <Title>Book a token</Title>
-      <Subtitle>Find a speciality, then choose your doctor.</Subtitle>
-      <ErrorText>{error}</ErrorText>
-
-      {loading ? (
-        <ActivityIndicator color={colors.primary} style={{ marginTop: 24 }} />
-      ) : (
-        <FlatList
-          data={filteredSpecs}
-          keyExtractor={(item) => String(item.id)}
-          style={{ marginTop: 14 }}
-          contentContainerStyle={{ paddingBottom: 40 }}
-          keyboardShouldPersistTaps="handled"
-          ListHeaderComponent={
-            <View style={styles.toolbar}>
-              <SearchField
-                value={specQuery}
-                onChangeText={setSpecQuery}
-                placeholder="Search specialities…"
-              />
-              <FilterChips
-                selectedId={sort}
-                onSelect={(id) => setSort(id as SortFilter)}
-                options={[
-                  { id: "all", label: "All" },
-                  { id: "az", label: "A → Z" },
-                  { id: "za", label: "Z → A" },
-                ]}
-              />
-              <ResultCount
-                label={`${filteredSpecs.length} specialit${filteredSpecs.length === 1 ? "y" : "ies"}`}
-              />
-              <Text style={styles.section}>Specialities</Text>
-            </View>
-          }
-          ListEmptyComponent={
+      <FlatList
+        data={loading ? [] : filteredSpecs}
+        keyExtractor={(item) => String(item.id)}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: 40 }}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+            onRefresh={onRefresh}
+          />
+        }
+        ListHeaderComponent={
+          <View style={{ gap: 12, marginBottom: 8 }}>
+            <Title>Book a token</Title>
+            <Subtitle>Find a speciality, then choose your doctor.</Subtitle>
+            <ErrorText>{error}</ErrorText>
+            {loading ? (
+              <ActivityIndicator color={colors.primary} style={{ marginVertical: 16 }} />
+            ) : (
+              <View style={styles.toolbar}>
+                <SearchField
+                  value={specQuery}
+                  onChangeText={setSpecQuery}
+                  placeholder="Search specialities…"
+                />
+                <FilterChips
+                  selectedId={sort}
+                  onSelect={(id) => setSort(id as SortFilter)}
+                  options={[
+                    { id: "all", label: "All" },
+                    { id: "az", label: "A → Z" },
+                    { id: "za", label: "Z → A" },
+                  ]}
+                />
+                <ResultCount
+                  label={`${filteredSpecs.length} specialit${filteredSpecs.length === 1 ? "y" : "ies"}`}
+                />
+                <Text style={styles.section}>Specialities</Text>
+              </View>
+            )}
+          </View>
+        }
+        ListEmptyComponent={
+          loading ? null : (
             <Empty title="No specialities found" body="Try another search." />
-          }
-          renderItem={({ item }) => (
-            <SpecialityCard
-              item={item}
-              active={selected === item.id}
-              onPress={() => pickSpeciality(item.id)}
-            />
-          )}
-          ListFooterComponent={
+          )
+        }
+        renderItem={({ item }) => (
+          <SpecialityCard
+            item={item}
+            active={selected === item.id}
+            onPress={() => pickSpeciality(item.id)}
+          />
+        )}
+        ListFooterComponent={
+          loading ? null : (
             <View style={styles.docsBlock}>
               <Text style={styles.section}>
                 {selectedName ? `Doctors · ${selectedName}` : "Doctors"}
@@ -168,9 +194,9 @@ export default function BookScreen() {
                 </>
               )}
             </View>
-          }
-        />
-      )}
+          )
+        }
+      />
     </Screen>
   );
 }
