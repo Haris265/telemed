@@ -59,17 +59,31 @@ export type Appointment = {
   created_at: string;
 };
 
+export type QueuePhase = "waiting" | "now" | "completed" | "cancelled";
+
 export type QueueInfo = {
   appointment_id: number;
   token_code: string;
   token_number: number;
   token_date: string;
+  is_today?: boolean;
   position: number;
   people_ahead: number;
+  wait_minutes?: number;
+  session_minutes?: number;
+  now_serving_number?: number | null;
+  now_serving_code?: string | null;
+  completed_count?: number;
+  upcoming_count?: number;
+  phase?: QueuePhase;
   estimated_at: string;
+  approx_time?: string;
+  date_label?: string;
   doctor_name: string;
+  doctor_id?: number;
   status: string;
   message: string;
+  updated_at?: string;
 };
 
 export type ClinicInfo = {

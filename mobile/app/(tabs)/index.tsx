@@ -85,11 +85,11 @@ export default function HomeScreen() {
         <View style={{ height: 12 }} />
 
         <Card style={{ gap: 12 }}>
-          <Text style={styles.cardTitle}>My queue</Text>
+          <Text style={styles.cardTitle}>Track live queue</Text>
           <Text style={styles.cardBody}>
-            See your token number and when to arrive at the clinic.
+            Enter today’s token number to see who’s being served and your wait time.
           </Text>
-          <Button label="View my queue" variant="secondary" onPress={() => router.push("/(tabs)/queue")} />
+          <Button label="Open live queue" variant="secondary" onPress={() => router.push("/(tabs)/queue")} />
         </Card>
       </ScrollView>
     </Screen>

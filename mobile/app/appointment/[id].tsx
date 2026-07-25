@@ -1,11 +1,20 @@
-import { useCallback, useState } from "react";
-import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+} from "react-native";
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
 
-import { Badge, Card, Empty, ErrorText, Screen, Subtitle, Title } from "@/components/ui";
+import { LiveQueueCard } from "@/components/LiveQueueCard";
+import { Empty, ErrorText, Screen } from "@/components/ui";
 import { api } from "@/lib/api";
 import type { QueueInfo } from "@/lib/types";
 import { colors } from "@/constants/theme";
+
+const POLL_MS = 12000;
 
 export default function AppointmentQueueScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -13,12 +22,16 @@ export default function AppointmentQueueScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
     setError("");
     try {
-      setQueue(await api.queue(Number(id)));
+      const data = await api.queue(Number(id));
+      setQueue(data);
+      setLastUpdated(new Date());
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
       setQueue(null);
@@ -32,8 +45,19 @@ export default function AppointmentQueueScreen() {
     useCallback(() => {
       setLoading(true);
       load();
+      if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = setInterval(load, POLL_MS);
+      return () => {
+        if (pollRef.current) clearInterval(pollRef.current);
+      };
     }, [load]),
   );
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
 
   if (loading) {
     return (
@@ -52,11 +76,6 @@ export default function AppointmentQueueScreen() {
     );
   }
 
-  const approx = new Date(queue.estimated_at).toLocaleTimeString(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-
   return (
     <Screen>
       <ScrollView
@@ -72,61 +91,27 @@ export default function AppointmentQueueScreen() {
           />
         }
       >
-        <Badge label={queue.status} tone="success" />
-        <View style={{ height: 10 }} />
-        <Title>{queue.token_code}</Title>
-        <Subtitle>Dr. {queue.doctor_name}</Subtitle>
+        <Text style={styles.liveHint}>
+          Live updates every {POLL_MS / 1000}s
+          {lastUpdated
+            ? ` · ${lastUpdated.toLocaleTimeString(undefined, {
+                hour: "numeric",
+                minute: "2-digit",
+                second: "2-digit",
+              })}`
+            : ""}
+        </Text>
         <ErrorText>{error}</ErrorText>
-
-        <View style={{ height: 16 }} />
-
-        <Card style={{ gap: 12 }}>
-          <Stat label="Queue position" value={`#${queue.position}`} />
-          <Stat label="People ahead" value={String(queue.people_ahead)} />
-          <Stat label="Date" value={queue.token_date} />
-          <Stat label="Approx time" value={approx} />
-        </Card>
-
-        <View style={{ height: 16 }} />
-
-        <Card>
-          <Text style={styles.message}>{queue.message}</Text>
-          <Text style={styles.hint}>
-            Come to the clinic around this time — your token number is your place in line.
-          </Text>
-        </Card>
+        <LiveQueueCard queue={queue} />
       </ScrollView>
     </Screen>
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.stat}>
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={styles.statValue}>{value}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  message: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: "600",
-    lineHeight: 24,
-  },
-  hint: {
+  liveHint: {
     color: colors.muted,
-    marginTop: 10,
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 12,
+    marginBottom: 12,
   },
-  stat: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  statLabel: { color: colors.muted, fontSize: 14 },
-  statValue: { color: colors.text, fontWeight: "700", fontSize: 15 },
 });

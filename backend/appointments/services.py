@@ -114,25 +114,144 @@ def book_token(
 
 
 def queue_info(appointment: Appointment) -> dict:
-    """Token queue / ETA details for a single appointment."""
-    people_ahead = max(appointment.token_number - 1, 0)
-    estimated = appointment.scheduled_at
+    """Live token queue / ETA for a single appointment."""
+    doctor = appointment.doctor
+    day = appointment.token_date
+    session_mins = max(int(doctor.session_time or 15), 1)
+    today = timezone.localdate()
+    now = timezone.now()
+
+    day_qs = Appointment.objects.filter(doctor=doctor, token_date=day).exclude(
+        status=Appointment.Status.CANCELLED
+    )
+
+    # Currently serving = lowest remaining upcoming token for this doctor/day
+    now_serving_appt = (
+        day_qs.filter(status=Appointment.Status.UPCOMING)
+        .order_by("token_number")
+        .first()
+    )
+    now_serving_number = now_serving_appt.token_number if now_serving_appt else None
+    now_serving_code = now_serving_appt.token_code if now_serving_appt else None
+
+    completed_count = day_qs.filter(status=Appointment.Status.COMPLETED).count()
+    total_upcoming = day_qs.filter(status=Appointment.Status.UPCOMING).count()
+
+    people_ahead = day_qs.filter(
+        status=Appointment.Status.UPCOMING,
+        token_number__lt=appointment.token_number,
+    ).count()
+
+    status_value = str(appointment.status)
+    wait_minutes = 0
+    phase = "waiting"
+
+    if appointment.status == Appointment.Status.COMPLETED:
+        phase = "completed"
+        message = (
+            f"Token {appointment.token_code} is done. "
+            "Thank you — hope you feel better soon."
+        )
+    elif appointment.status == Appointment.Status.CANCELLED:
+        phase = "cancelled"
+        message = f"Token {appointment.token_code} was cancelled."
+    elif (
+        now_serving_number is not None
+        and now_serving_number == appointment.token_number
+    ):
+        phase = "now"
+        wait_minutes = 0
+        message = (
+            f"It's your turn now — Token {appointment.token_code}. "
+            "Please proceed to the doctor."
+        )
+    else:
+        phase = "waiting"
+        wait_minutes = people_ahead * session_mins
+        serving_label = now_serving_code or "—"
+        if wait_minutes <= 0:
+            message = (
+                f"Now serving {serving_label}. "
+                f"Your token {appointment.token_code} is next — stay nearby."
+            )
+        elif wait_minutes < 60:
+            message = (
+                f"Now serving {serving_label}. "
+                f"About {wait_minutes} min until Token {appointment.token_code}."
+            )
+        else:
+            hours = wait_minutes // 60
+            mins = wait_minutes % 60
+            eta_label = f"{hours}h {mins}m" if mins else f"{hours}h"
+            message = (
+                f"Now serving {serving_label}. "
+                f"About {eta_label} until Token {appointment.token_code}."
+            )
+
+    if day == today and phase in ("waiting", "now"):
+        estimated = now + timedelta(minutes=wait_minutes)
+    else:
+        estimated = appointment.scheduled_at
+
     local_estimated = timezone.localtime(estimated)
     approx = format_clock(local_estimated.time())
     date_label = appointment.token_date.strftime("%d %b %Y")
-    message = (
-        f"Your token is {appointment.token_code}. "
-        f"Approx time {approx} on {date_label} — please arrive a few minutes early."
-    )
+
     return {
         "appointment_id": appointment.id,
         "token_code": appointment.token_code,
         "token_number": appointment.token_number,
         "token_date": appointment.token_date.isoformat(),
+        "is_today": day == today,
         "position": appointment.token_number,
         "people_ahead": people_ahead,
+        "wait_minutes": wait_minutes,
+        "session_minutes": session_mins,
+        "now_serving_number": now_serving_number,
+        "now_serving_code": now_serving_code,
+        "completed_count": completed_count,
+        "upcoming_count": total_upcoming,
+        "phase": phase,
         "estimated_at": estimated.isoformat(),
-        "doctor_name": appointment.doctor.full_name,
-        "status": str(appointment.status),
+        "approx_time": approx,
+        "date_label": date_label,
+        "doctor_name": doctor.full_name,
+        "doctor_id": doctor.id,
+        "status": status_value,
         "message": message,
+        "updated_at": now.isoformat(),
     }
+
+
+def lookup_patient_token(
+    patient: PatientProfile,
+    query: str,
+    *,
+    today_only: bool = True,
+) -> Appointment | None:
+    """Find a patient's appointment by token code (AH-003) or token number (3)."""
+    raw = (query or "").strip().upper()
+    if not raw:
+        return None
+
+    qs = Appointment.objects.filter(patient=patient).select_related("doctor")
+    if today_only:
+        qs = qs.filter(token_date=timezone.localdate())
+
+    # Full token code e.g. AH-003 or AH003
+    compact = raw.replace(" ", "")
+    if "-" in compact or any(ch.isalpha() for ch in compact):
+        for appt in qs.order_by("-token_date", "token_number"):
+            code = appt.token_code.upper().replace(" ", "")
+            if code == compact or code.replace("-", "") == compact.replace("-", ""):
+                return appt
+
+    # Numeric token number
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    if digits:
+        num = int(digits)
+        match = qs.filter(token_number=num).order_by("-token_date", "token_number").first()
+        if match:
+            return match
+
+    return None

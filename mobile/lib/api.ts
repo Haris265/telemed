@@ -147,4 +147,11 @@ export const api = {
     ),
   queue: (id: number) =>
     request<QueueInfo>(`/api/patient/appointments/${id}/queue/`),
+  lookupToken: (q: string, today = true) => {
+    const params = new URLSearchParams({
+      q: q.trim(),
+      today: today ? "1" : "0",
+    });
+    return request<QueueInfo>(`/api/patient/queue/lookup/?${params}`);
+  },
 };

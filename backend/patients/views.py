@@ -11,7 +11,12 @@ from rest_framework.views import APIView
 from accounts.permissions import IsPatient
 from appointments.models import Appointment
 from appointments.serializers import AppointmentSerializer
-from appointments.services import book_token, queue_info, upcoming_available_dates
+from appointments.services import (
+    book_token,
+    lookup_patient_token,
+    queue_info,
+    upcoming_available_dates,
+)
 from catalog.models import DoctorAvailability, DoctorProfile, Speciality
 from catalog.serializers import DoctorAvailabilitySerializer, SpecialitySerializer
 from whatsapp.meta_client import MetaWhatsAppClient
@@ -229,4 +234,44 @@ class PatientAppointmentQueueView(APIView):
         )
         if not appt:
             return Response({"detail": "Appointment not found."}, status=404)
+        return Response(queue_info(appt))
+
+
+class PatientTokenLookupView(APIView):
+    """Search today's (or any) appointment by token number/code for live queue status."""
+
+    permission_classes = [IsAuthenticated, IsPatient]
+
+    def get(self, request):
+        patient = _patient_for_user(request.user)
+        if not patient:
+            return Response({"detail": "Patient profile not found."}, status=404)
+
+        q = (request.query_params.get("q") or request.query_params.get("token") or "").strip()
+        if not q:
+            return Response(
+                {"detail": "Enter your token number (e.g. 5 or AH-005)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        today_only = (request.query_params.get("today") or "1").lower() not in (
+            "0",
+            "false",
+            "no",
+        )
+        appt = lookup_patient_token(patient, q, today_only=today_only)
+        if not appt and today_only:
+            # Fall back to any upcoming date if nothing today
+            appt = lookup_patient_token(patient, q, today_only=False)
+
+        if not appt:
+            return Response(
+                {
+                    "detail": (
+                        "No appointment found for that token. "
+                        "Check the number on your booking."
+                    )
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
         return Response(queue_info(appt))

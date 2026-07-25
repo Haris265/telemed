@@ -52,9 +52,9 @@ export default function TabLayout() {
       <Tabs.Screen
         name="queue"
         options={{
-          title: "My Queue",
+          title: "Live Queue",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="ticket-outline" color={color} size={size} />
+            <Ionicons name="pulse-outline" color={color} size={size} />
           ),
         }}
       />
