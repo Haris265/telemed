@@ -1,0 +1,315 @@
+from django.db.models import Count, Q
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from rest_framework import generics, status
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from accounts.permissions import IsDoctor
+from appointments.models import Appointment, ClinicalNote, Prescription
+from appointments.serializers import (
+    AppointmentDetailSerializer,
+    AppointmentSerializer,
+    ClinicalNoteSerializer,
+    DoctorAppointmentStatusSerializer,
+    PrescriptionSerializer,
+)
+from patients.models import PatientProfile
+
+from .models import DoctorProfile
+from .serializers import DoctorProfileSerializer
+
+
+def get_doctor_appointment(doctor: DoctorProfile, pk: int) -> Appointment:
+    return get_object_or_404(
+        Appointment.objects.select_related("patient", "doctor")
+        .prefetch_related("prescription__items")
+        .select_related("clinical_note"),
+        pk=pk,
+        doctor=doctor,
+    )
+
+
+class DoctorMeView(APIView):
+    permission_classes = [IsDoctor]
+
+    def get(self, request):
+        doctor = request.user.doctor_profile
+        return Response(DoctorProfileSerializer(doctor).data)
+
+
+class DoctorDashboardView(APIView):
+    permission_classes = [IsDoctor]
+
+    def get(self, request):
+        doctor = request.user.doctor_profile
+        today = timezone.localdate()
+
+        base_qs = Appointment.objects.filter(doctor=doctor)
+        today_qs = base_qs.filter(token_date=today)
+
+        upcoming_today = (
+            today_qs.filter(status=Appointment.Status.UPCOMING)
+            .select_related("patient", "doctor")
+            .order_by("token_number", "scheduled_at")
+        )
+        future_bookings = base_qs.filter(
+            token_date__gt=today,
+            status=Appointment.Status.UPCOMING,
+        ).count()
+
+        completed_patients = (
+            base_qs.filter(status=Appointment.Status.COMPLETED)
+            .values("patient_id")
+            .distinct()
+            .count()
+        )
+
+        return Response(
+            {
+                "today_upcoming": today_qs.filter(
+                    status=Appointment.Status.UPCOMING
+                ).count(),
+                "today_completed": today_qs.filter(
+                    status=Appointment.Status.COMPLETED
+                ).count(),
+                "today_rejected": today_qs.filter(
+                    status=Appointment.Status.REJECTED
+                ).count(),
+                "future_bookings": future_bookings,
+                "total_patients_seen": completed_patients,
+                "upcoming_today": AppointmentSerializer(upcoming_today, many=True).data,
+            }
+        )
+
+
+class DoctorAppointmentListView(generics.ListAPIView):
+    permission_classes = [IsDoctor]
+    serializer_class = AppointmentSerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        doctor = self.request.user.doctor_profile
+        qs = Appointment.objects.filter(doctor=doctor).select_related(
+            "patient", "doctor"
+        )
+        today = timezone.localdate()
+
+        status_param = self.request.query_params.get("status")
+        if status_param:
+            qs = qs.filter(status=status_param)
+
+        date_from = self.request.query_params.get("date_from")
+        date_to = self.request.query_params.get("date_to")
+        today_only = self.request.query_params.get("today")
+
+        if today_only and today_only.lower() in ("1", "true", "yes"):
+            qs = qs.filter(token_date=today)
+        elif date_from:
+            qs = qs.filter(token_date__gte=date_from)
+        elif date_to:
+            qs = qs.filter(token_date__lte=date_to)
+        else:
+            upcoming_default = self.request.query_params.get("upcoming")
+            if upcoming_default is None or upcoming_default.lower() in (
+                "1",
+                "true",
+                "yes",
+            ):
+                qs = qs.filter(token_date__gte=today)
+
+        return qs.order_by("token_date", "token_number", "scheduled_at")
+
+
+class DoctorAppointmentDetailView(APIView):
+    permission_classes = [IsDoctor]
+
+    def get(self, request, pk):
+        appointment = get_doctor_appointment(request.user.doctor_profile, pk)
+        return Response(AppointmentDetailSerializer(appointment).data)
+
+    def patch(self, request, pk):
+        appointment = get_doctor_appointment(request.user.doctor_profile, pk)
+        serializer = DoctorAppointmentStatusSerializer(
+            appointment, data=request.data, partial=True
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(AppointmentDetailSerializer(appointment).data)
+
+
+class DoctorClinicalNoteView(APIView):
+    permission_classes = [IsDoctor]
+
+    def get(self, request, pk):
+        appointment = get_doctor_appointment(request.user.doctor_profile, pk)
+        try:
+            return Response(ClinicalNoteSerializer(appointment.clinical_note).data)
+        except ClinicalNote.DoesNotExist:
+            return Response(
+                {
+                    "subjective": "",
+                    "objective": "",
+                    "assessment": "",
+                    "plan": "",
+                }
+            )
+
+    def put(self, request, pk):
+        appointment = get_doctor_appointment(request.user.doctor_profile, pk)
+        note, _ = ClinicalNote.objects.get_or_create(appointment=appointment)
+        serializer = ClinicalNoteSerializer(note, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+
+class DoctorPrescriptionView(APIView):
+    permission_classes = [IsDoctor]
+
+    def get(self, request, pk):
+        appointment = get_doctor_appointment(request.user.doctor_profile, pk)
+        try:
+            return Response(PrescriptionSerializer(appointment.prescription).data)
+        except Prescription.DoesNotExist:
+            return Response({"notes": "", "items": []})
+
+    def put(self, request, pk):
+        appointment = get_doctor_appointment(request.user.doctor_profile, pk)
+        prescription, _ = Prescription.objects.get_or_create(appointment=appointment)
+        serializer = PrescriptionSerializer(prescription, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+
+class DoctorPatientListView(APIView):
+    permission_classes = [IsDoctor]
+
+    def get(self, request):
+        doctor = request.user.doctor_profile
+        today = timezone.localdate()
+
+        patient_ids = (
+            Appointment.objects.filter(
+                doctor=doctor,
+                token_date__gte=today,
+            )
+            .values_list("patient_id", flat=True)
+            .distinct()
+        )
+
+        patients = PatientProfile.objects.filter(id__in=patient_ids).annotate(
+            upcoming_count=Count(
+                "appointments",
+                filter=Q(
+                    appointments__doctor=doctor,
+                    appointments__status=Appointment.Status.UPCOMING,
+                    appointments__token_date__gte=today,
+                ),
+            ),
+            total_visits=Count(
+                "appointments",
+                filter=Q(
+                    appointments__doctor=doctor,
+                    appointments__status=Appointment.Status.COMPLETED,
+                ),
+            ),
+        )
+
+        results = []
+        for patient in patients:
+            next_appt = (
+                Appointment.objects.filter(
+                    doctor=doctor,
+                    patient=patient,
+                    status=Appointment.Status.UPCOMING,
+                    token_date__gte=today,
+                )
+                .order_by("token_date", "token_number")
+                .first()
+            )
+            results.append(
+                {
+                    "uuid": str(patient.uuid),
+                    "name": patient.name,
+                    "phone": patient.phone,
+                    "upcoming_count": patient.upcoming_count,
+                    "total_visits": patient.total_visits,
+                    "next_appointment": (
+                        AppointmentSerializer(next_appt).data if next_appt else None
+                    ),
+                }
+            )
+
+        results.sort(key=lambda p: (p["next_appointment"] or {}).get("token_date", "9999"))
+        return Response(results)
+
+
+class DoctorPatientDetailView(APIView):
+    permission_classes = [IsDoctor]
+
+    def get(self, request, uuid):
+        doctor = request.user.doctor_profile
+        patient = get_object_or_404(PatientProfile, uuid=uuid)
+
+        appointments = (
+            Appointment.objects.filter(doctor=doctor, patient=patient)
+            .select_related("patient", "doctor")
+            .prefetch_related("prescription__items")
+            .select_related("clinical_note")
+            .order_by("-token_date", "-token_number")
+        )
+
+        completed = appointments.filter(status=Appointment.Status.COMPLETED)
+        last_completed = completed.first()
+        rejected_count = appointments.filter(status=Appointment.Status.REJECTED).count()
+        total_count = appointments.count()
+
+        next_upcoming = (
+            appointments.filter(
+                status=Appointment.Status.UPCOMING,
+                token_date__gte=timezone.localdate(),
+            )
+            .order_by("token_date", "token_number")
+            .first()
+        )
+
+        return Response(
+            {
+                "uuid": str(patient.uuid),
+                "name": patient.name,
+                "phone": patient.phone,
+                "total_visits": completed.count(),
+                "total_appointments": total_count,
+                "rejected_count": rejected_count,
+                "rejection_rate": (
+                    round(rejected_count / total_count * 100, 1) if total_count else 0
+                ),
+                "last_visit_date": (
+                    last_completed.token_date.isoformat() if last_completed else None
+                ),
+                "last_clinical_note": (
+                    ClinicalNoteSerializer(last_completed.clinical_note).data
+                    if last_completed
+                    and ClinicalNote.objects.filter(
+                        appointment=last_completed
+                    ).exists()
+                    else None
+                ),
+                "last_prescription": (
+                    PrescriptionSerializer(last_completed.prescription).data
+                    if last_completed
+                    and Prescription.objects.filter(
+                        appointment=last_completed
+                    ).exists()
+                    else None
+                ),
+                "next_appointment": (
+                    AppointmentSerializer(next_upcoming).data if next_upcoming else None
+                ),
+                "visit_history": AppointmentDetailSerializer(
+                    appointments, many=True
+                ).data,
+            }
+        )

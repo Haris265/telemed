@@ -7,13 +7,22 @@ from appointments.views import (
     AdminPatientListView,
 )
 
+from .doctor_views import (
+    DoctorAppointmentDetailView,
+    DoctorAppointmentListView,
+    DoctorClinicalNoteView,
+    DoctorDashboardView,
+    DoctorMeView,
+    DoctorPatientDetailView,
+    DoctorPatientListView,
+    DoctorPrescriptionView,
+)
 from .views import (
     AdminDeactivateUnsubscribedDoctorsView,
     AdminDoctorAvailabilityListView,
     AdminSubscriptionDetailView,
     AdminSubscriptionListCreateView,
     DashboardStatsView,
-    DoctorAppointmentListView,
     DoctorAvailabilityListCreateView,
     DoctorDetailView,
     DoctorListView,
@@ -68,6 +77,29 @@ urlpatterns = [
 ]
 
 doctor_urlpatterns = [
+    path("me/", DoctorMeView.as_view(), name="doctor-me"),
+    path("dashboard/", DoctorDashboardView.as_view(), name="doctor-dashboard"),
     path("availability/", DoctorAvailabilityListCreateView.as_view(), name="doctor-availability"),
     path("appointments/", DoctorAppointmentListView.as_view(), name="doctor-appointments"),
+    path(
+        "appointments/<int:pk>/",
+        DoctorAppointmentDetailView.as_view(),
+        name="doctor-appointment-detail",
+    ),
+    path(
+        "appointments/<int:pk>/clinical/",
+        DoctorClinicalNoteView.as_view(),
+        name="doctor-appointment-clinical",
+    ),
+    path(
+        "appointments/<int:pk>/prescription/",
+        DoctorPrescriptionView.as_view(),
+        name="doctor-appointment-prescription",
+    ),
+    path("patients/", DoctorPatientListView.as_view(), name="doctor-patients"),
+    path(
+        "patients/<uuid:uuid>/",
+        DoctorPatientDetailView.as_view(),
+        name="doctor-patient-detail",
+    ),
 ]

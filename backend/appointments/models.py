@@ -11,6 +11,7 @@ class Appointment(models.Model):
         UPCOMING = "upcoming", "Upcoming"
         COMPLETED = "completed", "Completed"
         CANCELLED = "cancelled", "Cancelled"
+        REJECTED = "rejected", "Rejected"
 
     patient = models.ForeignKey(
         PatientProfile,
@@ -31,6 +32,7 @@ class Appointment(models.Model):
         default=Status.UPCOMING,
     )
     notes = models.TextField(blank=True, default="")
+    rejection_reason = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -61,3 +63,60 @@ class Appointment(models.Model):
 
     def __str__(self):
         return f"{self.token_code} {self.patient} → {self.doctor} @ {self.token_date}"
+
+
+class ClinicalNote(models.Model):
+    appointment = models.OneToOneField(
+        Appointment,
+        on_delete=models.CASCADE,
+        related_name="clinical_note",
+    )
+    subjective = models.TextField(blank=True, default="")
+    objective = models.TextField(blank=True, default="")
+    assessment = models.TextField(blank=True, default="")
+    plan = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"SOAP for {self.appointment.token_code}"
+
+
+class Prescription(models.Model):
+    appointment = models.OneToOneField(
+        Appointment,
+        on_delete=models.CASCADE,
+        related_name="prescription",
+    )
+    notes = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Rx for {self.appointment.token_code}"
+
+
+class PrescriptionItem(models.Model):
+    prescription = models.ForeignKey(
+        Prescription,
+        on_delete=models.CASCADE,
+        related_name="items",
+    )
+    medicine_name = models.CharField(max_length=200)
+    dosage = models.CharField(max_length=100, blank=True, default="")
+    frequency = models.CharField(max_length=100, blank=True, default="")
+    duration = models.CharField(max_length=100, blank=True, default="")
+    instructions = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["id"]
+
+    def __str__(self):
+        return self.medicine_name

@@ -75,11 +75,28 @@ curl -s -X POST http://localhost:8000/api/whatsapp/simulate/ \
 | `/admin/patients` | Patient list |
 | `/admin/appointments` | Appointment ops |
 
-## Doctor APIs (no UI)
+## Doctor mobile app
+
+```bash
+cd doctor-mobile
+npm install
+npm start
+```
+
+Login with admin-created doctor credentials. See [doctor-mobile/README.md](doctor-mobile/README.md).
+
+## Doctor APIs
 
 - `POST /api/auth/login/` (role=doctor)
+- `GET /api/doctor/me/`
+- `GET /api/doctor/dashboard/`
+- `GET /api/doctor/appointments/` (`?status=`, `?today=1`, `?date_from=`, `?date_to=`)
+- `GET/PATCH /api/doctor/appointments/<id>/`
+- `GET/PUT /api/doctor/appointments/<id>/clinical/`
+- `GET/PUT /api/doctor/appointments/<id>/prescription/`
+- `GET /api/doctor/patients/`
+- `GET /api/doctor/patients/<uuid>/`
 - `GET/POST /api/doctor/availability/`
-- `GET /api/doctor/appointments/`
 
 ## Docker (optional)
 

@@ -211,17 +211,3 @@ class AdminDoctorAvailabilityListView(generics.ListAPIView):
         return DoctorAvailability.objects.filter(doctor__uuid=doctor_uuid).order_by(
             "weekday", "start_time"
         )
-
-
-class DoctorAppointmentListView(generics.ListAPIView):
-    permission_classes = [IsDoctor]
-    serializer_class = AppointmentSerializer
-
-    def get_queryset(self):
-        qs = Appointment.objects.filter(
-            doctor=self.request.user.doctor_profile
-        ).select_related("patient", "doctor")
-        status_param = self.request.query_params.get("status")
-        if status_param:
-            qs = qs.filter(status=status_param)
-        return qs
