@@ -239,7 +239,7 @@ export default function NearbyClinicsScreen() {
     geocodeRequestId.current += 1;
     Keyboard.dismiss();
 
-    const area = extractAreaFromSearch(searchQuery, item.label);
+    const area = extractAreaFromSearch(searchQuery, item.label, item.title);
     setSearchQuery(item.label);
     setSuggestions([]);
     setSearchNoResults(false);

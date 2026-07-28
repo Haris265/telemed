@@ -2,6 +2,7 @@ import {
   ActivityIndicator,
   Keyboard,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -24,6 +25,47 @@ type Props = {
   placeholder?: string;
   showNoResults?: boolean;
 };
+
+function HighlightedLine({
+  text,
+  query,
+  style,
+  highlightStyle,
+}: {
+  text: string;
+  query: string;
+  style: object;
+  highlightStyle: object;
+}) {
+  const q = query.trim();
+  if (!q) {
+    return (
+      <Text style={style} numberOfLines={2}>
+        {text}
+      </Text>
+    );
+  }
+
+  const lower = text.toLowerCase();
+  const qLower = q.toLowerCase();
+  const idx = lower.indexOf(qLower);
+
+  if (idx === -1) {
+    return (
+      <Text style={style} numberOfLines={2}>
+        {text}
+      </Text>
+    );
+  }
+
+  return (
+    <Text style={style} numberOfLines={2}>
+      {idx > 0 ? <Text style={styles.suggestionNormal}>{text.slice(0, idx)}</Text> : null}
+      <Text style={highlightStyle}>{text.slice(idx, idx + q.length)}</Text>
+      <Text style={styles.suggestionNormal}>{text.slice(idx + q.length)}</Text>
+    </Text>
+  );
+}
 
 export function MapSearchBar({
   value,
@@ -91,29 +133,52 @@ export function MapSearchBar({
           {!loading && showNoResults && !suggestions.length ? (
             <View style={styles.suggestionRow}>
               <Ionicons name="alert-circle-outline" size={18} color={colors.muted} />
-              <Text style={styles.suggestionText}>No places found. Try Clifton or Gulshan.</Text>
+              <Text style={styles.suggestionText}>
+                No places found. Try Gulshan, Clifton, or DHA.
+              </Text>
             </View>
           ) : null}
 
-          {suggestions.map((item, index) => (
-            <Pressable
-              key={`${item.latitude}-${item.longitude}-${index}`}
-              onPress={() => {
-                Keyboard.dismiss();
-                onSelectSuggestion?.(item);
-              }}
-              style={({ pressed }) => [
-                styles.suggestionRow,
-                index < suggestions.length - 1 && styles.suggestionBorder,
-                pressed && { backgroundColor: "#f3f4f6" },
-              ]}
-            >
-              <Ionicons name="location-outline" size={18} color={colors.primary} />
-              <Text style={styles.suggestionText} numberOfLines={2}>
-                {item.label}
-              </Text>
-            </Pressable>
-          ))}
+          <ScrollView
+            keyboardShouldPersistTaps="always"
+            nestedScrollEnabled
+            style={styles.suggestionScroll}
+          >
+            {suggestions.map((item, index) => (
+              <Pressable
+                key={`${item.latitude}-${item.longitude}-${index}`}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  onSelectSuggestion?.(item);
+                }}
+                style={({ pressed }) => [
+                  styles.suggestionRow,
+                  index < suggestions.length - 1 && styles.suggestionBorder,
+                  pressed && { backgroundColor: "#f3f4f6" },
+                ]}
+              >
+                <Ionicons
+                  name="location-outline"
+                  size={18}
+                  color={colors.muted}
+                  style={styles.suggestionIcon}
+                />
+                <View style={styles.suggestionTextWrap}>
+                  <HighlightedLine
+                    text={item.primaryLine}
+                    query={trimmed}
+                    style={styles.suggestionTitle}
+                    highlightStyle={styles.suggestionMatch}
+                  />
+                  {item.detailLine ? (
+                    <Text style={styles.suggestionSubtitle} numberOfLines={2}>
+                      {item.detailLine}
+                    </Text>
+                  ) : null}
+                </View>
+              </Pressable>
+            ))}
+          </ScrollView>
         </View>
       ) : null}
     </View>
@@ -172,18 +237,48 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 8,
     elevation: 8,
-    maxHeight: 240,
+    maxHeight: 300,
+  },
+  suggestionScroll: {
+    maxHeight: 300,
   },
   suggestionRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: 10,
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
+  suggestionIcon: {
+    marginTop: 2,
+  },
   suggestionBorder: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "#e5e7eb",
+  },
+  suggestionTextWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  suggestionTitle: {
+    color: "#111827",
+    fontSize: 15,
+    lineHeight: 20,
+  },
+  suggestionNormal: {
+    color: "#374151",
+    fontSize: 15,
+    fontWeight: "400",
+  },
+  suggestionMatch: {
+    color: "#111827",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  suggestionSubtitle: {
+    color: "#6b7280",
+    fontSize: 13,
+    lineHeight: 18,
   },
   suggestionText: {
     flex: 1,
