@@ -17,7 +17,10 @@ import type { DateOption, Doctor } from "@/lib/types";
 import { colors } from "@/constants/theme";
 
 export default function BookDoctorScreen() {
-  const { doctorUuid } = useLocalSearchParams<{ doctorUuid: string }>();
+  const { doctorUuid, symptomCheckId } = useLocalSearchParams<{
+    doctorUuid: string;
+    symptomCheckId?: string;
+  }>();
   const router = useRouter();
   const [doctor, setDoctor] = useState<Doctor | null>(null);
   const [weekly, setWeekly] = useState<
@@ -58,7 +61,12 @@ export default function BookDoctorScreen() {
     setBooking(true);
     setError("");
     try {
-      const res = await api.book(doctor.uuid, selected);
+      const checkId = symptomCheckId ? Number(symptomCheckId) : undefined;
+      const res = await api.book(
+        doctor.uuid,
+        selected,
+        Number.isFinite(checkId) ? { symptom_check_id: checkId } : undefined,
+      );
       Alert.alert("Booked!", res.queue.message, [
         {
           text: "View queue",

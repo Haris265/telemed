@@ -10,6 +10,7 @@ from .views import (
     PatientSpecialityListView,
     PatientTokenLookupView,
     RequestOtpView,
+    SymptomCheckView,
     VerifyOtpView,
 )
 
@@ -39,5 +40,10 @@ urlpatterns = [
         "queue/lookup/",
         PatientTokenLookupView.as_view(),
         name="patient-queue-lookup",
+    ),
+    path(
+        "symptoms/check/",
+        SymptomCheckView.as_view(),
+        name="patient-symptoms-check",
     ),
 ]

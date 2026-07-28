@@ -92,3 +92,15 @@ export type ClinicInfo = {
   book_prefill: string;
   webhook_path?: string;
 };
+
+export type SymptomUrgency = "routine" | "urgent" | "emergency";
+
+export type SymptomCheckResult = {
+  id: number;
+  symptoms: string;
+  urgency: SymptomUrgency;
+  summary: string;
+  disclaimer: string;
+  recommended_specialities: Speciality[];
+  created_at: string;
+};

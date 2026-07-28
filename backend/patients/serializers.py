@@ -12,7 +12,7 @@ from appointments.serializers import AppointmentSerializer
 from catalog.models import DoctorProfile, Speciality
 from catalog.serializers import SpecialitySerializer
 
-from .models import PatientProfile
+from .models import PatientProfile, SymptomCheck
 
 User = get_user_model()
 
@@ -172,6 +172,21 @@ class PatientDoctorSerializer(serializers.ModelSerializer):
 class PatientBookSerializer(serializers.Serializer):
     doctor_uuid = serializers.UUIDField()
     token_date = serializers.DateField()
+    symptoms = serializers.CharField(required=False, allow_blank=True, max_length=2000)
+    symptom_check_id = serializers.IntegerField(required=False, min_value=1)
+
+    def validate_symptom_check_id(self, value):
+        if value is None:
+            return value
+        request = self.context.get("request")
+        patient = getattr(getattr(request, "user", None), "patient_profile", None)
+        if patient is None and request:
+            patient = PatientProfile.objects.filter(user=request.user).first()
+        if patient is None:
+            raise serializers.ValidationError("Patient profile not found.")
+        if not SymptomCheck.objects.filter(pk=value, patient=patient).exists():
+            raise serializers.ValidationError("Symptom check not found.")
+        return value
 
     def validate(self, attrs):
         from appointments.services import upcoming_available_dates
@@ -194,3 +209,38 @@ class PatientBookSerializer(serializers.Serializer):
         attrs["start"] = match["start"]
         attrs["doctor"] = doctor
         return attrs
+
+
+class SymptomCheckRequestSerializer(serializers.Serializer):
+    symptoms = serializers.CharField(min_length=10, max_length=4000)
+
+    def validate_symptoms(self, value):
+        text = (value or "").strip()
+        if len(text) < 10:
+            raise serializers.ValidationError(
+                "Please describe your symptoms in at least 10 characters."
+            )
+        return text
+
+
+class SymptomCheckResultSerializer(serializers.ModelSerializer):
+    recommended_specialities = SpecialitySerializer(many=True, read_only=True)
+    disclaimer = serializers.SerializerMethodField()
+    symptoms = serializers.CharField(source="symptoms_text", read_only=True)
+
+    class Meta:
+        model = SymptomCheck
+        fields = (
+            "id",
+            "symptoms",
+            "urgency",
+            "summary",
+            "disclaimer",
+            "recommended_specialities",
+            "created_at",
+        )
+
+    def get_disclaimer(self, obj):
+        from .services.symptom_triage import DISCLAIMER
+
+        return DISCLAIMER

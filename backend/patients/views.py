@@ -21,15 +21,18 @@ from catalog.models import DoctorAvailability, DoctorProfile, Speciality
 from catalog.serializers import DoctorAvailabilitySerializer, SpecialitySerializer
 from whatsapp.meta_client import MetaWhatsAppClient
 
-from .models import PatientProfile
+from .models import PatientProfile, SymptomCheck
 from .serializers import (
     PatientBookSerializer,
     PatientDoctorSerializer,
     PatientProfileSerializer,
     RequestOtpSerializer,
+    SymptomCheckRequestSerializer,
+    SymptomCheckResultSerializer,
     VerifyOtpSerializer,
     generate_otp,
 )
+from .services.symptom_triage import triage_symptoms
 
 logger = logging.getLogger(__name__)
 
@@ -192,7 +195,7 @@ class PatientAppointmentListCreateView(APIView):
         if not patient:
             return Response({"detail": "Patient profile not found."}, status=404)
 
-        ser = PatientBookSerializer(data=request.data)
+        ser = PatientBookSerializer(data=request.data, context={"request": request})
         ser.is_valid(raise_exception=True)
         doctor = ser.validated_data["doctor"]
         token_date = ser.validated_data["token_date"]
@@ -200,13 +203,25 @@ class PatientAppointmentListCreateView(APIView):
         parts = [int(x) for x in start_raw.split(":")[:3]]
         start_time = time(*parts)
 
+        notes = "Booked via App"
+        symptoms = (ser.validated_data.get("symptoms") or "").strip()
+        symptom_check_id = ser.validated_data.get("symptom_check_id")
+        if symptom_check_id:
+            check = SymptomCheck.objects.filter(
+                pk=symptom_check_id, patient=patient
+            ).first()
+            if check:
+                symptoms = check.symptoms_text.strip()
+        if symptoms:
+            notes = f"{notes}\nSymptoms: {symptoms}"
+
         try:
             appt = book_token(
                 patient,
                 doctor,
                 token_date,
                 start_time,
-                notes="Booked via App",
+                notes=notes,
             )
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -235,6 +250,34 @@ class PatientAppointmentQueueView(APIView):
         if not appt:
             return Response({"detail": "Appointment not found."}, status=404)
         return Response(queue_info(appt))
+
+
+class SymptomCheckView(APIView):
+    permission_classes = [IsAuthenticated, IsPatient]
+
+    def post(self, request):
+        patient = _patient_for_user(request.user)
+        if not patient:
+            return Response({"detail": "Patient profile not found."}, status=404)
+
+        ser = SymptomCheckRequestSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        symptoms = ser.validated_data["symptoms"]
+        result = triage_symptoms(symptoms)
+
+        check = SymptomCheck.objects.create(
+            patient=patient,
+            symptoms_text=symptoms,
+            urgency=result.urgency,
+            summary=result.summary,
+        )
+        if result.recommended_specialities:
+            check.recommended_specialities.set(result.recommended_specialities)
+
+        return Response(
+            SymptomCheckResultSerializer(check).data,
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class PatientTokenLookupView(APIView):

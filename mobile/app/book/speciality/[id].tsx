@@ -17,7 +17,11 @@ import type { Doctor } from "@/lib/types";
 import { colors } from "@/constants/theme";
 
 export default function SpecialityDoctorsScreen() {
-  const { id, name } = useLocalSearchParams<{ id: string; name?: string }>();
+  const { id, name, symptomCheckId } = useLocalSearchParams<{
+    id: string;
+    name?: string;
+    symptomCheckId?: string;
+  }>();
   const router = useRouter();
   const navigation = useNavigation();
   const specialityId = Number(id);
@@ -118,7 +122,15 @@ export default function SpecialityDoctorsScreen() {
         renderItem={({ item }) => (
           <DoctorCard
             doctor={item}
-            onPress={() => router.push(`/book/${item.uuid}`)}
+            onPress={() =>
+              router.push({
+                pathname: "/book/[doctorUuid]",
+                params: {
+                  doctorUuid: item.uuid,
+                  ...(symptomCheckId ? { symptomCheckId } : {}),
+                },
+              })
+            }
           />
         )}
       />

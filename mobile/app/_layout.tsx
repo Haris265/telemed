@@ -50,6 +50,15 @@ export default function RootLayout() {
             <Stack.Screen name="(tabs)" />
             <Stack.Screen name="login" options={{ headerShown: false }} />
             <Stack.Screen
+              name="symptoms/index"
+              options={{
+                headerShown: true,
+                title: "Symptoms checker",
+                headerTintColor: colors.text,
+                headerStyle: { backgroundColor: colors.surface },
+              }}
+            />
+            <Stack.Screen
               name="book/speciality/[id]"
               options={{
                 headerShown: true,

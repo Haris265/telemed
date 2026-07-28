@@ -6,6 +6,7 @@ import type {
   Patient,
   QueueInfo,
   Speciality,
+  SymptomCheckResult,
 } from "./types";
 
 const API_URL = (
@@ -137,14 +138,30 @@ export const api = {
     const qs = status ? `?status=${status}` : "";
     return request<Appointment[]>(`/api/patient/appointments/${qs}`);
   },
-  book: (doctor_uuid: string, token_date: string) =>
+  book: (
+    doctor_uuid: string,
+    token_date: string,
+    options?: { symptoms?: string; symptom_check_id?: number },
+  ) =>
     request<{ appointment: Appointment; queue: QueueInfo }>(
       "/api/patient/appointments/",
       {
         method: "POST",
-        body: JSON.stringify({ doctor_uuid, token_date }),
+        body: JSON.stringify({
+          doctor_uuid,
+          token_date,
+          ...(options?.symptoms ? { symptoms: options.symptoms } : {}),
+          ...(options?.symptom_check_id
+            ? { symptom_check_id: options.symptom_check_id }
+            : {}),
+        }),
       },
     ),
+  symptomsCheck: (symptoms: string) =>
+    request<SymptomCheckResult>("/api/patient/symptoms/check/", {
+      method: "POST",
+      body: JSON.stringify({ symptoms }),
+    }),
   queue: (id: number) =>
     request<QueueInfo>(`/api/patient/appointments/${id}/queue/`),
   lookupToken: (q: string, today = true) => {

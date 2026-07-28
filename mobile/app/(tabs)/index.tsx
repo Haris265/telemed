@@ -90,6 +90,20 @@ export default function HomeScreen() {
         <View style={{ height: 20 }} />
 
         <Card style={{ gap: 12 }}>
+          <Text style={styles.cardTitle}>Symptoms checker</Text>
+          <Text style={styles.cardBody}>
+            Not sure who to see? Describe your symptoms and get a speciality suggestion.
+          </Text>
+          <Button
+            label="Check symptoms"
+            variant="secondary"
+            onPress={() => router.push("/symptoms")}
+          />
+        </Card>
+
+        <View style={{ height: 12 }} />
+
+        <Card style={{ gap: 12 }}>
           <Text style={styles.cardTitle}>Book appointment</Text>
           <Text style={styles.cardBody}>
             Choose speciality, doctor, and date — get your token instantly.
