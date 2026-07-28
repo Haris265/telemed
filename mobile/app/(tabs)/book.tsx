@@ -10,11 +10,11 @@ import {
 import { useFocusEffect, useRouter } from "expo-router";
 
 import { FilterChips, ResultCount } from "@/components/FilterChips";
-import { DoctorCard, SpecialityCard } from "@/components/ListCards";
+import { SpecialityCard } from "@/components/ListCards";
 import { SearchField } from "@/components/SearchField";
 import { Empty, ErrorText, Screen, Subtitle, Title } from "@/components/ui";
 import { api } from "@/lib/api";
-import type { Doctor, Speciality } from "@/lib/types";
+import type { Speciality } from "@/lib/types";
 import { colors } from "@/constants/theme";
 
 type SortFilter = "all" | "az" | "za";
@@ -22,13 +22,9 @@ type SortFilter = "all" | "az" | "za";
 export default function BookScreen() {
   const router = useRouter();
   const [specialities, setSpecialities] = useState<Speciality[]>([]);
-  const [selected, setSelected] = useState<number | null>(null);
-  const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [specQuery, setSpecQuery] = useState("");
-  const [docQuery, setDocQuery] = useState("");
   const [sort, setSort] = useState<SortFilter>("all");
   const [loading, setLoading] = useState(true);
-  const [loadingDocs, setLoadingDocs] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
 
@@ -44,18 +40,6 @@ export default function BookScreen() {
     }
   }, []);
 
-  const reloadDoctors = useCallback(async (id: number) => {
-    setLoadingDocs(true);
-    setError("");
-    try {
-      setDoctors(await api.doctors(id));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load doctors");
-    } finally {
-      setLoadingDocs(false);
-    }
-  }, []);
-
   useFocusEffect(
     useCallback(() => {
       setLoading(true);
@@ -66,8 +50,7 @@ export default function BookScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadSpecs();
-    if (selected != null) await reloadDoctors(selected);
-  }, [loadSpecs, reloadDoctors, selected]);
+  }, [loadSpecs]);
 
   const filteredSpecs = useMemo(() => {
     const q = specQuery.trim().toLowerCase();
@@ -77,29 +60,12 @@ export default function BookScreen() {
     return list;
   }, [specialities, specQuery, sort]);
 
-  const filteredDocs = useMemo(() => {
-    const q = docQuery.trim().toLowerCase();
-    if (!q) return doctors;
-    return doctors.filter(
-      (d) =>
-        d.full_name.toLowerCase().includes(q) ||
-        d.specialities.some((s) => s.name.toLowerCase().includes(q)),
-    );
-  }, [doctors, docQuery]);
-
-  async function pickSpeciality(id: number) {
-    if (selected === id) {
-      setSelected(null);
-      setDoctors([]);
-      setDocQuery("");
-      return;
-    }
-    setSelected(id);
-    setDocQuery("");
-    await reloadDoctors(id);
+  function openSpeciality(item: Speciality) {
+    router.push({
+      pathname: "/book/speciality/[id]",
+      params: { id: String(item.id), name: item.name },
+    });
   }
-
-  const selectedName = specialities.find((s) => s.id === selected)?.name;
 
   return (
     <Screen>
@@ -154,48 +120,8 @@ export default function BookScreen() {
           )
         }
         renderItem={({ item }) => (
-          <SpecialityCard
-            item={item}
-            active={selected === item.id}
-            onPress={() => pickSpeciality(item.id)}
-          />
+          <SpecialityCard item={item} onPress={() => openSpeciality(item)} />
         )}
-        ListFooterComponent={
-          loading ? null : (
-            <View style={styles.docsBlock}>
-              <Text style={styles.section}>
-                {selectedName ? `Doctors · ${selectedName}` : "Doctors"}
-              </Text>
-              {!selected ? (
-                <Empty title="Pick a speciality" body="Doctors for that field will show here." />
-              ) : loadingDocs ? (
-                <ActivityIndicator color={colors.primary} style={{ marginTop: 12 }} />
-              ) : (
-                <>
-                  <SearchField
-                    value={docQuery}
-                    onChangeText={setDocQuery}
-                    placeholder="Search doctors…"
-                  />
-                  <ResultCount
-                    label={`${filteredDocs.length} doctor${filteredDocs.length === 1 ? "" : "s"}`}
-                  />
-                  {!filteredDocs.length ? (
-                    <Empty title="No doctors" body="Try another search or speciality." />
-                  ) : (
-                    filteredDocs.map((d) => (
-                      <DoctorCard
-                        key={d.uuid}
-                        doctor={d}
-                        onPress={() => router.push(`/book/${d.uuid}`)}
-                      />
-                    ))
-                  )}
-                </>
-              )}
-            </View>
-          )
-        }
       />
     </Screen>
   );
@@ -214,10 +140,5 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     marginTop: 4,
     marginBottom: 4,
-  },
-  docsBlock: {
-    marginTop: 18,
-    gap: 12,
-    paddingBottom: 8,
   },
 });

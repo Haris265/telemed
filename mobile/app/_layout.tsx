@@ -50,6 +50,15 @@ export default function RootLayout() {
             <Stack.Screen name="(tabs)" />
             <Stack.Screen name="login" options={{ headerShown: false }} />
             <Stack.Screen
+              name="book/speciality/[id]"
+              options={{
+                headerShown: true,
+                title: "Doctors",
+                headerTintColor: colors.text,
+                headerStyle: { backgroundColor: colors.surface },
+              }}
+            />
+            <Stack.Screen
               name="book/[doctorUuid]"
               options={{
                 headerShown: true,
