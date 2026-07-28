@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   Alert,
   RefreshControl,
@@ -11,20 +11,40 @@ import { useRouter } from "expo-router";
 
 import { Button, Card, ErrorText, Screen, Subtitle, Title } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
-import { colors } from "@/constants/theme";
+import { useTheme } from "@/lib/theme";
 
 export default function ProfileScreen() {
   const router = useRouter();
   const { patient, signOut, refreshMe } = useAuth();
+  const { colors, fonts } = useTheme();
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        label: {
+          color: colors.muted,
+          fontSize: 12,
+          fontFamily: fonts.sansBold,
+          textTransform: "uppercase",
+          letterSpacing: 0.6,
+          marginTop: 4,
+        },
+        value: {
+          color: colors.text,
+          fontSize: 16,
+          fontFamily: fonts.sansSemi,
+        },
+      }),
+    [colors, fonts],
+  );
 
   function confirmSignOut() {
     Alert.alert("Sign out", "Are you sure you want to sign out?", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Sign out",
-        style: "destructive",
         onPress: () => {
           void signOut();
         },
@@ -32,7 +52,7 @@ export default function ProfileScreen() {
     ]);
   }
 
-  async function onRefresh() {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
     setError("");
     try {
@@ -42,7 +62,7 @@ export default function ProfileScreen() {
     } finally {
       setRefreshing(false);
     }
-  }
+  }, [refreshMe]);
 
   return (
     <Screen>
@@ -78,28 +98,12 @@ export default function ProfileScreen() {
         <Button
           label="My visits & reports"
           variant="secondary"
-          onPress={() => router.push("/history")}
+          onPress={() => router.push("/(tabs)/reports")}
         />
 
         <View style={{ height: 12 }} />
-        <Button label="Sign out" variant="danger" onPress={confirmSignOut} />
+        <Button label="Sign out" variant="secondary" onPress={confirmSignOut} />
       </ScrollView>
     </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  label: {
-    color: colors.muted,
-    fontSize: 12,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-    marginTop: 4,
-  },
-  value: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: "600",
-  },
-});

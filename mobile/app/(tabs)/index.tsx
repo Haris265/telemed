@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   Linking,
   RefreshControl,
@@ -12,14 +12,43 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { Button, Card, Screen, Subtitle, Title } from "@/components/ui";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { colors } from "@/constants/theme";
+import { useTheme } from "@/lib/theme";
 
 export default function HomeScreen() {
   const { patient, refreshMe } = useAuth();
+  const { colors, fonts } = useTheme();
   const router = useRouter();
   const [waError, setWaError] = useState("");
   const [waLoading, setWaLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        hello: {
+          color: colors.primary,
+          fontFamily: fonts.sansBold,
+          marginBottom: 4,
+        },
+        cardTitle: {
+          color: colors.text,
+          fontSize: 17,
+          fontFamily: fonts.sansBold,
+        },
+        cardBody: {
+          color: colors.muted,
+          fontSize: 14,
+          lineHeight: 21,
+          fontFamily: fonts.sans,
+        },
+        error: {
+          color: colors.danger,
+          fontSize: 13,
+          fontFamily: fonts.sans,
+        },
+      }),
+    [colors, fonts],
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -90,20 +119,6 @@ export default function HomeScreen() {
         <View style={{ height: 20 }} />
 
         <Card style={{ gap: 12 }}>
-          <Text style={styles.cardTitle}>My medical history</Text>
-          <Text style={styles.cardBody}>
-            View past visits, doctors you consulted, prescriptions and reports.
-          </Text>
-          <Button
-            label="View my reports"
-            variant="secondary"
-            onPress={() => router.push("/history")}
-          />
-        </Card>
-
-        <View style={{ height: 12 }} />
-
-        <Card style={{ gap: 12 }}>
           <Text style={styles.cardTitle}>Nearby clinics</Text>
           <Text style={styles.cardBody}>
             Share your location to see which clinics are closest to you.
@@ -172,25 +187,3 @@ export default function HomeScreen() {
     </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  hello: {
-    color: colors.primary,
-    fontWeight: "700",
-    marginBottom: 4,
-  },
-  cardTitle: {
-    color: colors.text,
-    fontSize: 17,
-    fontWeight: "700",
-  },
-  cardBody: {
-    color: colors.muted,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  error: {
-    color: colors.danger,
-    fontSize: 13,
-  },
-});

@@ -3,16 +3,7 @@ import { Platform, StyleSheet, Text, View } from "react-native";
 import MapView, { Marker, type MapPressEvent, type Region } from "react-native-maps";
 
 import type { ClinicNearby } from "@/lib/types";
-import { colors } from "@/constants/theme";
-
-const DARK_MAP_STYLE = [
-  { elementType: "geometry", stylers: [{ color: "#1c2b44" }] },
-  { elementType: "labels.text.fill", stylers: [{ color: "#93a4bd" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#0b1220" }] },
-  { featureType: "road", elementType: "geometry", stylers: [{ color: "#2a3c57" }] },
-  { featureType: "water", elementType: "geometry", stylers: [{ color: "#0b1220" }] },
-  { featureType: "poi", elementType: "geometry", stylers: [{ color: "#152033" }] },
-];
+import { useTheme } from "@/lib/theme";
 
 export type MapPin = {
   latitude: number;
@@ -74,6 +65,18 @@ export function ClinicMap({
   overlay,
 }: Props) {
   const mapRef = useRef<MapView>(null);
+  const { colors } = useTheme();
+
+  const wrapStyle = useMemo(
+    () => ({
+      borderRadius: 16,
+      overflow: "hidden" as const,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    }),
+    [colors],
+  );
 
   const initialRegion = useMemo(() => {
     const pins: MapPin[] = [];
@@ -96,16 +99,18 @@ export function ClinicMap({
   if (Platform.OS === "web") {
     return (
       <View style={styles.outer} pointerEvents="box-none">
-        <View style={styles.wrap}>
+        <View style={wrapStyle}>
           <View style={styles.webFallback}>
-            <Text style={styles.webTitle}>Map preview</Text>
-            <Text style={styles.webBody}>
+            <Text style={[styles.webTitle, { color: colors.text }]}>Map preview</Text>
+            <Text style={[styles.webBody, { color: colors.muted }]}>
               {pin
                 ? `Pin: ${pin.latitude.toFixed(4)}, ${pin.longitude.toFixed(4)}`
                 : "Tap Search or pick an area below."}
             </Text>
             {clinics.length ? (
-              <Text style={styles.webBody}>{clinics.length} clinic(s) found</Text>
+              <Text style={[styles.webBody, { color: colors.muted }]}>
+                {clinics.length} clinic(s) found
+              </Text>
             ) : null}
           </View>
         </View>
@@ -116,14 +121,13 @@ export function ClinicMap({
 
   return (
     <View style={styles.outer} pointerEvents="box-none">
-      <View style={styles.wrap}>
+      <View style={wrapStyle}>
         <MapView
           ref={mapRef}
           style={styles.map}
           initialRegion={initialRegion}
           onPress={handlePress}
-          customMapStyle={Platform.OS === "android" ? DARK_MAP_STYLE : undefined}
-          userInterfaceStyle="dark"
+          userInterfaceStyle="light"
           showsUserLocation={false}
           showsMyLocationButton={false}
           toolbarEnabled={false}
@@ -154,8 +158,15 @@ export function ClinicMap({
           ))}
         </MapView>
         {interactive ? (
-          <View style={styles.hintBar}>
-            <Text style={styles.hintText}>Tap map or drag pin to set location</Text>
+          <View
+            style={[
+              styles.hintBar,
+              { backgroundColor: colors.surfaceAlt, borderTopColor: colors.border },
+            ]}
+          >
+            <Text style={[styles.hintText, { color: colors.muted }]}>
+              Tap map or drag pin to set location
+            </Text>
           </View>
         ) : null}
       </View>
@@ -169,26 +180,16 @@ const styles = StyleSheet.create({
     position: "relative",
     zIndex: 1,
   },
-  wrap: {
-    borderRadius: 16,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
   map: {
     width: "100%",
     height: 320,
   },
   hintBar: {
-    backgroundColor: colors.surfaceAlt,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderTopWidth: 1,
-    borderTopColor: colors.border,
   },
   hintText: {
-    color: colors.muted,
     fontSize: 12,
     textAlign: "center",
   },
@@ -200,12 +201,10 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   webTitle: {
-    color: colors.text,
     fontWeight: "700",
     fontSize: 15,
   },
   webBody: {
-    color: colors.muted,
     fontSize: 13,
   },
 });
