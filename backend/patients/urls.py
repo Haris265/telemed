@@ -4,11 +4,13 @@ from .views import (
     ClinicInfoView,
     MeView,
     NearbyClinicsView,
+    PatientAppointmentDetailView,
     PatientAppointmentListCreateView,
     PatientAppointmentQueueView,
     PatientClinicDetailView,
     PatientDoctorAvailabilityView,
     PatientDoctorListView,
+    PatientHistoryView,
     PatientSpecialityListView,
     PatientTokenLookupView,
     RequestOtpView,
@@ -34,9 +36,19 @@ urlpatterns = [
         name="patient-appointments",
     ),
     path(
+        "appointments/<int:pk>/",
+        PatientAppointmentDetailView.as_view(),
+        name="patient-appointment-detail",
+    ),
+    path(
         "appointments/<int:pk>/queue/",
         PatientAppointmentQueueView.as_view(),
         name="patient-appointment-queue",
+    ),
+    path(
+        "history/",
+        PatientHistoryView.as_view(),
+        name="patient-history",
     ),
     path(
         "queue/lookup/",

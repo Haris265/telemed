@@ -90,6 +90,20 @@ export default function HomeScreen() {
         <View style={{ height: 20 }} />
 
         <Card style={{ gap: 12 }}>
+          <Text style={styles.cardTitle}>My medical history</Text>
+          <Text style={styles.cardBody}>
+            View past visits, doctors you consulted, prescriptions and reports.
+          </Text>
+          <Button
+            label="View my reports"
+            variant="secondary"
+            onPress={() => router.push("/history")}
+          />
+        </Card>
+
+        <View style={{ height: 12 }} />
+
+        <Card style={{ gap: 12 }}>
           <Text style={styles.cardTitle}>Nearby clinics</Text>
           <Text style={styles.cardBody}>
             Share your location to see which clinics are closest to you.

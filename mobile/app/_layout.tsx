@@ -112,6 +112,24 @@ export default function RootLayout() {
                 headerStyle: { backgroundColor: colors.surface },
               }}
             />
+            <Stack.Screen
+              name="history/index"
+              options={{
+                headerShown: true,
+                title: "My history",
+                headerTintColor: colors.text,
+                headerStyle: { backgroundColor: colors.surface },
+              }}
+            />
+            <Stack.Screen
+              name="history/[id]"
+              options={{
+                headerShown: true,
+                title: "Visit report",
+                headerTintColor: colors.text,
+                headerStyle: { backgroundColor: colors.surface },
+              }}
+            />
           </Stack>
         </Gate>
       </AuthProvider>

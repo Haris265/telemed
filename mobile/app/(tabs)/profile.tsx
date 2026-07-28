@@ -7,12 +7,14 @@ import {
   Text,
   View,
 } from "react-native";
+import { useRouter } from "expo-router";
 
 import { Button, Card, ErrorText, Screen, Subtitle, Title } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
 import { colors } from "@/constants/theme";
 
 export default function ProfileScreen() {
+  const router = useRouter();
   const { patient, signOut, refreshMe } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
@@ -72,7 +74,14 @@ export default function ProfileScreen() {
           </Text>
         </Card>
 
-        <View style={{ height: 20 }} />
+        <View style={{ height: 16 }} />
+        <Button
+          label="My visits & reports"
+          variant="secondary"
+          onPress={() => router.push("/history")}
+        />
+
+        <View style={{ height: 12 }} />
         <Button label="Sign out" variant="danger" onPress={confirmSignOut} />
       </ScrollView>
     </Screen>

@@ -10,8 +10,13 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsPatient
-from appointments.models import Appointment
-from appointments.serializers import AppointmentSerializer
+from appointments.models import Appointment, ClinicalNote, Prescription
+from appointments.serializers import (
+    AppointmentDetailSerializer,
+    AppointmentSerializer,
+    ClinicalNoteSerializer,
+    PrescriptionSerializer,
+)
 from appointments.services import (
     book_token,
     lookup_patient_token,
@@ -234,6 +239,101 @@ class PatientAppointmentListCreateView(APIView):
                 "queue": queue_info(appt),
             },
             status=status.HTTP_201_CREATED,
+        )
+
+
+class PatientAppointmentDetailView(APIView):
+    permission_classes = [IsAuthenticated, IsPatient]
+
+    def get(self, request, pk):
+        patient = _patient_for_user(request.user)
+        if not patient:
+            return Response({"detail": "Patient profile not found."}, status=404)
+
+        appt = (
+            Appointment.objects.filter(pk=pk, patient=patient)
+            .select_related("patient", "doctor")
+            .prefetch_related("prescription__items", "doctor__specialities")
+            .select_related("clinical_note")
+            .first()
+        )
+        if not appt:
+            return Response({"detail": "Appointment not found."}, status=404)
+
+        return Response(AppointmentDetailSerializer(appt).data)
+
+
+class PatientHistoryView(APIView):
+    permission_classes = [IsAuthenticated, IsPatient]
+
+    def get(self, request):
+        patient = _patient_for_user(request.user)
+        if not patient:
+            return Response({"detail": "Patient profile not found."}, status=404)
+
+        appointments = (
+            Appointment.objects.filter(patient=patient)
+            .select_related("patient", "doctor")
+            .prefetch_related("prescription__items", "doctor__specialities")
+            .select_related("clinical_note")
+            .order_by("-token_date", "-token_number", "-created_at")
+        )
+
+        completed = appointments.filter(status=Appointment.Status.COMPLETED)
+        last_completed = completed.first()
+
+        doctors_seen = []
+        seen_ids = set()
+        for appt in completed.order_by("-token_date", "-token_number"):
+            if appt.doctor_id in seen_ids:
+                continue
+            seen_ids.add(appt.doctor_id)
+            doctor = appt.doctor
+            doctors_seen.append(
+                {
+                    "id": doctor.id,
+                    "uuid": str(doctor.uuid),
+                    "full_name": doctor.full_name,
+                    "specialities": [
+                        {"id": s.id, "name": s.name}
+                        for s in doctor.specialities.filter(is_active=True)
+                    ],
+                    "visit_count": completed.filter(doctor_id=doctor.id).count(),
+                    "last_visit_date": (
+                        completed.filter(doctor_id=doctor.id)
+                        .order_by("-token_date")
+                        .values_list("token_date", flat=True)
+                        .first()
+                        .isoformat()
+                        if completed.filter(doctor_id=doctor.id).exists()
+                        else None
+                    ),
+                }
+            )
+
+        return Response(
+            {
+                "total_visits": completed.count(),
+                "total_appointments": appointments.count(),
+                "doctors_seen_count": len(doctors_seen),
+                "last_visit_date": (
+                    last_completed.token_date.isoformat() if last_completed else None
+                ),
+                "last_clinical_note": (
+                    ClinicalNoteSerializer(last_completed.clinical_note).data
+                    if last_completed
+                    and ClinicalNote.objects.filter(appointment=last_completed).exists()
+                    else None
+                ),
+                "last_prescription": (
+                    PrescriptionSerializer(last_completed.prescription).data
+                    if last_completed
+                    and Prescription.objects.filter(appointment=last_completed).exists()
+                    else None
+                ),
+                "doctors_seen": doctors_seen,
+                "visit_history": AppointmentDetailSerializer(appointments, many=True).data,
+            }
         )
 
 

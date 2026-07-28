@@ -54,9 +54,62 @@ export type Appointment = {
   token_date: string;
   token_number: number;
   token_code: string;
-  status: "upcoming" | "completed" | "cancelled";
+  status: AppointmentStatus;
   notes: string;
+  rejection_reason?: string;
   created_at: string;
+  updated_at?: string;
+  clinical_note?: ClinicalNote | null;
+  prescription?: Prescription | null;
+};
+
+export type AppointmentStatus = "upcoming" | "completed" | "cancelled" | "rejected";
+
+export type ClinicalNote = {
+  id?: number;
+  subjective: string;
+  objective: string;
+  assessment: string;
+  plan: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type PrescriptionItem = {
+  id?: number;
+  medicine_name: string;
+  dosage: string;
+  frequency: string;
+  duration: string;
+  instructions: string;
+};
+
+export type Prescription = {
+  id?: number;
+  notes: string;
+  items: PrescriptionItem[];
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type DoctorSeen = {
+  id: number;
+  uuid: string;
+  full_name: string;
+  specialities: { id: number; name: string }[];
+  visit_count: number;
+  last_visit_date: string | null;
+};
+
+export type PatientHistory = {
+  total_visits: number;
+  total_appointments: number;
+  doctors_seen_count: number;
+  last_visit_date: string | null;
+  last_clinical_note: ClinicalNote | null;
+  last_prescription: Prescription | null;
+  doctors_seen: DoctorSeen[];
+  visit_history: Appointment[];
 };
 
 export type QueuePhase = "waiting" | "now" | "completed" | "cancelled";

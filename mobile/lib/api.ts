@@ -1,11 +1,12 @@
 import { storage } from "./storage";
 import type {
-  Appointment,
   ClinicDetail,
   ClinicInfo,
   Doctor,
   NearbyClinicsResponse,
   Patient,
+  PatientHistory,
+  Appointment,
   QueueInfo,
   Speciality,
   SymptomCheckResult,
@@ -140,6 +141,9 @@ export const api = {
     const qs = status ? `?status=${status}` : "";
     return request<Appointment[]>(`/api/patient/appointments/${qs}`);
   },
+  appointmentDetail: (id: number) =>
+    request<Appointment>(`/api/patient/appointments/${id}/`),
+  history: () => request<PatientHistory>("/api/patient/history/"),
   book: (
     doctor_uuid: string,
     token_date: string,
