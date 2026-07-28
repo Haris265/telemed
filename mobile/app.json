@@ -9,11 +9,18 @@
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.telemed.patient"
+      "bundleIdentifier": "com.telemed.patient",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Telemed uses your location to show nearby clinics."
+      }
     },
     "android": {
       "package": "com.telemed.patient",
       "versionCode": 1,
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#0b1220",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -37,7 +44,13 @@
           "backgroundColor": "#0b1220"
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow Telemed to use your location to find nearby clinics."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

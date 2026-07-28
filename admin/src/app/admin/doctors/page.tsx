@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Eye, Pencil, Power, PowerOff, Trash2, UserPlus } from "lucide-react";
 
 import { api, unwrapCount, unwrapList } from "@/lib/api";
-import type { Doctor, Speciality } from "@/lib/types";
+import type { Clinic, Doctor, Speciality } from "@/lib/types";
 import {
   Badge,
   Button,
@@ -24,6 +24,7 @@ const PAGE_SIZE = 10;
 export default function DoctorsPage() {
   const [items, setItems] = useState<Doctor[]>([]);
   const [specialities, setSpecialities] = useState<Speciality[]>([]);
+  const [clinics, setClinics] = useState<Clinic[]>([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [q, setQ] = useState("");
@@ -34,6 +35,7 @@ export default function DoctorsPage() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [sessionTime, setSessionTime] = useState(15);
+  const [clinicId, setClinicId] = useState<string>("");
   const [selected, setSelected] = useState<number[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -69,6 +71,10 @@ export default function DoctorsPage() {
       .specialities({ page_size: "100" })
       .then((data) => setSpecialities(unwrapList(data).filter((s) => s.is_active)))
       .catch(() => undefined);
+    api
+      .clinics({ page_size: "100" })
+      .then((data) => setClinics(unwrapList(data).filter((c) => c.is_active)))
+      .catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -77,6 +83,7 @@ export default function DoctorsPage() {
     setFirstName(doctor.first_name);
     setLastName(doctor.last_name);
     setSessionTime(doctor.session_time);
+    setClinicId(doctor.clinic != null ? String(doctor.clinic) : "");
     setSelected(doctor.specialities.map((s) => s.id));
     setOpen(true);
   }
@@ -87,6 +94,7 @@ export default function DoctorsPage() {
     setFirstName("");
     setLastName("");
     setSessionTime(15);
+    setClinicId("");
     setSelected([]);
   }
 
@@ -110,6 +118,7 @@ export default function DoctorsPage() {
         last_name: lastName,
         session_time: sessionTime,
         speciality_ids: selected,
+        clinic: clinicId ? Number(clinicId) : null,
       });
       closeModal();
       await load();
@@ -207,6 +216,7 @@ export default function DoctorsPage() {
             <thead className="bg-slate-900/50 text-xs uppercase tracking-wide text-slate-400">
               <tr>
                 <th className="px-5 py-3 font-medium">Doctor</th>
+                <th className="px-5 py-3 font-medium">Clinic</th>
                 <th className="px-5 py-3 font-medium">Specialities</th>
                 <th className="px-5 py-3 font-medium">Session</th>
                 <th className="px-5 py-3 font-medium">Subscription</th>
@@ -220,6 +230,9 @@ export default function DoctorsPage() {
                   <td className="px-5 py-3">
                     <p className="font-medium">Dr. {d.full_name}</p>
                     <p className="text-xs text-slate-400">{d.email}</p>
+                  </td>
+                  <td className="px-5 py-3 text-slate-300">
+                    {d.clinic_name || "—"}
                   </td>
                   <td className="px-5 py-3">
                     <div className="flex flex-wrap gap-1">
@@ -342,6 +355,22 @@ export default function DoctorsPage() {
             onChange={(e) => setSessionTime(Number(e.target.value))}
             required
           />
+
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-sky-200">Clinic</label>
+            <select
+              value={clinicId}
+              onChange={(e) => setClinicId(e.target.value)}
+              className="w-full rounded-xl border border-slate-600 bg-slate-900/70 px-3 py-2.5 text-sm text-slate-100 outline-none focus:border-sky-400/50"
+            >
+              <option value="">Unassigned</option>
+              {clinics.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
 
           {editing ? (
             <p className="text-xs text-slate-400">Login email: {editing.email}</p>

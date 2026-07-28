@@ -1,5 +1,6 @@
 import type {
   Appointment,
+  Clinic,
   DashboardStats,
   Doctor,
   DoctorAvailability,
@@ -127,6 +128,45 @@ export const api = {
     }),
   deleteSpeciality: (id: number) =>
     request<void>(`/api/admin/specialities/${id}/`, { method: "DELETE" }),
+  clinics: (params: Record<string, string> = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return request<Paginated<Clinic> | Clinic[]>(
+      `/api/admin/clinics/${qs ? `?${qs}` : ""}`,
+    );
+  },
+  createClinic: (payload: {
+    name: string;
+    address: string;
+    city?: string;
+    area?: string;
+    phone?: string;
+    latitude: number | string;
+    longitude: number | string;
+    is_active?: boolean;
+  }) =>
+    request<Clinic>("/api/admin/clinics/", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateClinic: (
+    id: number,
+    payload: Partial<{
+      name: string;
+      address: string;
+      city: string;
+      area: string;
+      phone: string;
+      latitude: number | string;
+      longitude: number | string;
+      is_active: boolean;
+    }>,
+  ) =>
+    request<Clinic>(`/api/admin/clinics/${id}/`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  deleteClinic: (id: number) =>
+    request<void>(`/api/admin/clinics/${id}/`, { method: "DELETE" }),
   doctors: (params: Record<string, string> = {}) => {
     const qs = new URLSearchParams(params).toString();
     return request<Paginated<Doctor> | Doctor[]>(
@@ -153,6 +193,7 @@ export const api = {
       speciality_ids: number[];
       session_time: number;
       is_active: boolean;
+      clinic: number | null;
     }>,
   ) =>
     request<Doctor>(`/api/admin/doctors/${uuid}/`, {

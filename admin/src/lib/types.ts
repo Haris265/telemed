@@ -16,6 +16,19 @@ export type Speciality = {
   created_at: string;
 };
 
+export type Clinic = {
+  id: number;
+  name: string;
+  address: string;
+  city: string;
+  area: string;
+  phone: string;
+  latitude: string;
+  longitude: string;
+  is_active: boolean;
+  created_at: string;
+};
+
 export type Doctor = {
   id: number;
   uuid: string;
@@ -24,6 +37,8 @@ export type Doctor = {
   full_name: string;
   email: string;
   specialities: Speciality[];
+  clinic: number | null;
+  clinic_name: string | null;
   session_time: number;
   is_active: boolean;
   has_active_subscription: boolean;

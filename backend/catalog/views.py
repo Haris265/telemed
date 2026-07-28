@@ -9,8 +9,9 @@ from appointments.models import Appointment
 from appointments.serializers import AppointmentSerializer
 from patients.models import PatientProfile
 
-from .models import DoctorAvailability, DoctorProfile, DoctorSubscription, Speciality
+from .models import Clinic, DoctorAvailability, DoctorProfile, DoctorSubscription, Speciality
 from .serializers import (
+    ClinicSerializer,
     DoctorAvailabilitySerializer,
     DoctorOnboardingSerializer,
     DoctorProfileSerializer,
@@ -69,6 +70,33 @@ class SpecialityDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAdmin]
     serializer_class = SpecialitySerializer
     queryset = Speciality.objects.all()
+
+
+class ClinicListCreateView(generics.ListCreateAPIView):
+    permission_classes = [IsAdmin]
+    serializer_class = ClinicSerializer
+    queryset = Clinic.objects.all()
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        q = self.request.query_params.get("q")
+        if q:
+            qs = qs.filter(
+                Q(name__icontains=q)
+                | Q(address__icontains=q)
+                | Q(city__icontains=q)
+                | Q(phone__icontains=q)
+            )
+        active = self.request.query_params.get("is_active")
+        if active is not None:
+            qs = qs.filter(is_active=active.lower() in ("1", "true", "yes"))
+        return qs
+
+
+class ClinicDetailView(generics.RetrieveUpdateDestroyAPIView):
+    permission_classes = [IsAdmin]
+    serializer_class = ClinicSerializer
+    queryset = Clinic.objects.all()
 
 
 class DoctorOnboardingView(APIView):

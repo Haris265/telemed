@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, useEffect, useState } from "react";
 import {
+  Building2,
   CalendarDays,
   CreditCard,
   LayoutDashboard,
@@ -21,6 +22,7 @@ import type { UserInfo } from "@/lib/types";
 const NAV = [
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/specialities", label: "Specialities", icon: HeartPulse },
+  { href: "/admin/clinics", label: "Clinics", icon: Building2 },
   { href: "/admin/doctors", label: "Doctors", icon: Stethoscope },
   { href: "/admin/subscriptions", label: "Subscriptions", icon: CreditCard },
   { href: "/admin/patients", label: "Patients", icon: Users },

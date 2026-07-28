@@ -3,8 +3,10 @@ from django.urls import path
 from .views import (
     ClinicInfoView,
     MeView,
+    NearbyClinicsView,
     PatientAppointmentListCreateView,
     PatientAppointmentQueueView,
+    PatientClinicDetailView,
     PatientDoctorAvailabilityView,
     PatientDoctorListView,
     PatientSpecialityListView,
@@ -45,5 +47,15 @@ urlpatterns = [
         "symptoms/check/",
         SymptomCheckView.as_view(),
         name="patient-symptoms-check",
+    ),
+    path(
+        "clinics/nearby/",
+        NearbyClinicsView.as_view(),
+        name="patient-clinics-nearby",
+    ),
+    path(
+        "clinics/<int:pk>/",
+        PatientClinicDetailView.as_view(),
+        name="patient-clinic-detail",
     ),
 ]

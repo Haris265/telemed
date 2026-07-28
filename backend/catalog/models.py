@@ -25,6 +25,29 @@ class Speciality(models.Model):
         return self.icon_url
 
 
+class Clinic(models.Model):
+    name = models.CharField(max_length=200)
+    address = models.CharField(max_length=300)
+    city = models.CharField(max_length=100, blank=True, default="")
+    area = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text="Neighbourhood/area name used for map search (e.g. Gulshan, Clifton).",
+    )
+    phone = models.CharField(max_length=30, blank=True, default="")
+    latitude = models.DecimalField(max_digits=9, decimal_places=6)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name", "id"]
+
+    def __str__(self):
+        return self.name
+
+
 class DoctorProfile(models.Model):
     uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
     user = models.OneToOneField(
@@ -35,6 +58,13 @@ class DoctorProfile(models.Model):
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
     specialities = models.ManyToManyField(Speciality, related_name="doctors", blank=True)
+    clinic = models.ForeignKey(
+        Clinic,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="doctors",
+    )
     session_time = models.PositiveIntegerField(
         default=15,
         help_text="Consultation session length in minutes",

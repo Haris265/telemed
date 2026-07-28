@@ -3,6 +3,7 @@ from datetime import time
 
 from django.conf import settings
 from django.core.cache import cache
+from django.db.models import Count, Q
 from rest_framework import generics, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -17,8 +18,9 @@ from appointments.services import (
     queue_info,
     upcoming_available_dates,
 )
-from catalog.models import DoctorAvailability, DoctorProfile, Speciality
+from catalog.models import Clinic, DoctorAvailability, DoctorProfile, Speciality
 from catalog.serializers import DoctorAvailabilitySerializer, SpecialitySerializer
+from catalog.services.geo import haversine_km
 from whatsapp.meta_client import MetaWhatsAppClient
 
 from .models import PatientProfile, SymptomCheck
@@ -277,6 +279,126 @@ class SymptomCheckView(APIView):
         return Response(
             SymptomCheckResultSerializer(check).data,
             status=status.HTTP_201_CREATED,
+        )
+
+
+class NearbyClinicsView(APIView):
+    permission_classes = [IsAuthenticated, IsPatient]
+
+    def get(self, request):
+        try:
+            lat = float(request.query_params.get("lat", ""))
+            lng = float(request.query_params.get("lng", ""))
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "Query params lat and lng are required as numbers."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
+            return Response(
+                {"detail": "lat/lng out of valid range."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        area_q = (request.query_params.get("area") or "").strip()
+        match_mode = "area" if area_q else "nearby"
+
+        try:
+            radius_km = float(request.query_params.get("radius_km", "5"))
+        except (TypeError, ValueError):
+            radius_km = 5.0
+        radius_km = max(0.5, min(radius_km, 25.0))
+
+        results = []
+        clinics = Clinic.objects.filter(is_active=True).annotate(
+            doctor_count=Count(
+                "doctors",
+                filter=Q(doctors__is_active=True),
+                distinct=True,
+            )
+        )
+        if area_q:
+            clinics = clinics.filter(area__icontains=area_q)
+
+        for clinic in clinics:
+            distance = haversine_km(
+                lat,
+                lng,
+                float(clinic.latitude),
+                float(clinic.longitude),
+            )
+            if distance <= radius_km:
+                results.append(
+                    {
+                        "id": clinic.id,
+                        "name": clinic.name,
+                        "address": clinic.address,
+                        "city": clinic.city,
+                        "area": clinic.area,
+                        "phone": clinic.phone,
+                        "latitude": float(clinic.latitude),
+                        "longitude": float(clinic.longitude),
+                        "distance_km": round(distance, 2),
+                        "doctor_count": clinic.doctor_count,
+                    }
+                )
+
+        results.sort(key=lambda row: row["distance_km"])
+        return Response(
+            {
+                "lat": lat,
+                "lng": lng,
+                "radius_km": radius_km,
+                "area": area_q,
+                "match_mode": match_mode,
+                "count": len(results),
+                "results": results,
+            }
+        )
+
+
+class PatientClinicDetailView(APIView):
+    permission_classes = [IsAuthenticated, IsPatient]
+
+    def get(self, request, pk):
+        clinic = Clinic.objects.filter(pk=pk, is_active=True).first()
+        if not clinic:
+            return Response({"detail": "Clinic not found."}, status=404)
+
+        doctors = (
+            DoctorProfile.objects.filter(is_active=True, clinic=clinic)
+            .prefetch_related("specialities")
+            .order_by("first_name", "last_name")
+        )
+        speciality_map = {}
+        for doctor in doctors:
+            for spec in doctor.specialities.all():
+                if not spec.is_active:
+                    continue
+                if spec.id not in speciality_map:
+                    speciality_map[spec.id] = {
+                        "id": spec.id,
+                        "name": spec.name,
+                        "display_icon": spec.display_icon,
+                        "is_active": spec.is_active,
+                        "doctor_count": 0,
+                    }
+                speciality_map[spec.id]["doctor_count"] += 1
+
+        specialities = sorted(speciality_map.values(), key=lambda s: s["name"])
+
+        return Response(
+            {
+                "id": clinic.id,
+                "name": clinic.name,
+                "address": clinic.address,
+                "city": clinic.city,
+                "phone": clinic.phone,
+                "latitude": float(clinic.latitude),
+                "longitude": float(clinic.longitude),
+                "specialities": specialities,
+                "doctors": PatientDoctorSerializer(doctors, many=True).data,
+            }
         )
 
 

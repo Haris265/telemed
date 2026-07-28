@@ -90,6 +90,20 @@ export default function HomeScreen() {
         <View style={{ height: 20 }} />
 
         <Card style={{ gap: 12 }}>
+          <Text style={styles.cardTitle}>Nearby clinics</Text>
+          <Text style={styles.cardBody}>
+            Share your location to see which clinics are closest to you.
+          </Text>
+          <Button
+            label="Find nearby clinics"
+            variant="secondary"
+            onPress={() => router.push("/clinics/nearby")}
+          />
+        </Card>
+
+        <View style={{ height: 12 }} />
+
+        <Card style={{ gap: 12 }}>
           <Text style={styles.cardTitle}>Symptoms checker</Text>
           <Text style={styles.cardBody}>
             Not sure who to see? Describe your symptoms and get a speciality suggestion.

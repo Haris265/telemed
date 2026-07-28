@@ -1,8 +1,10 @@
 import { storage } from "./storage";
 import type {
   Appointment,
+  ClinicDetail,
   ClinicInfo,
   Doctor,
+  NearbyClinicsResponse,
   Patient,
   QueueInfo,
   Speciality,
@@ -162,6 +164,25 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ symptoms }),
     }),
+  nearbyClinics: (
+    lat: number,
+    lng: number,
+    options: { radiusKm?: number; area?: string } = {},
+  ) => {
+    const params = new URLSearchParams({
+      lat: String(lat),
+      lng: String(lng),
+      radius_km: String(options.radiusKm ?? 5),
+    });
+    if (options.area?.trim()) {
+      params.set("area", options.area.trim());
+    }
+    return request<NearbyClinicsResponse>(
+      `/api/patient/clinics/nearby/?${params}`,
+    );
+  },
+  clinicDetail: (id: number) =>
+    request<ClinicDetail>(`/api/patient/clinics/${id}/`),
   queue: (id: number) =>
     request<QueueInfo>(`/api/patient/appointments/${id}/queue/`),
   lookupToken: (q: string, today = true) => {

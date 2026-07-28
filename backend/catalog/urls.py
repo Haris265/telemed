@@ -22,6 +22,8 @@ from .views import (
     AdminDoctorAvailabilityListView,
     AdminSubscriptionDetailView,
     AdminSubscriptionListCreateView,
+    ClinicDetailView,
+    ClinicListCreateView,
     DashboardStatsView,
     DoctorAvailabilityListCreateView,
     DoctorDetailView,
@@ -39,6 +41,8 @@ urlpatterns = [
         SpecialityDetailView.as_view(),
         name="admin-speciality-detail",
     ),
+    path("clinics/", ClinicListCreateView.as_view(), name="admin-clinics"),
+    path("clinics/<int:pk>/", ClinicDetailView.as_view(), name="admin-clinic-detail"),
     path("doctors/onboarding/", DoctorOnboardingView.as_view(), name="admin-doctor-onboard"),
     path("doctors/", DoctorListView.as_view(), name="admin-doctors"),
     path(

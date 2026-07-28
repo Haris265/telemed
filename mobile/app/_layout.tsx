@@ -50,6 +50,33 @@ export default function RootLayout() {
             <Stack.Screen name="(tabs)" />
             <Stack.Screen name="login" options={{ headerShown: false }} />
             <Stack.Screen
+              name="clinics/nearby"
+              options={{
+                headerShown: true,
+                title: "Nearby clinics",
+                headerTintColor: colors.text,
+                headerStyle: { backgroundColor: colors.surface },
+              }}
+            />
+            <Stack.Screen
+              name="clinics/[id]/index"
+              options={{
+                headerShown: true,
+                title: "Clinic",
+                headerTintColor: colors.text,
+                headerStyle: { backgroundColor: colors.surface },
+              }}
+            />
+            <Stack.Screen
+              name="clinics/[id]/speciality/[specId]"
+              options={{
+                headerShown: true,
+                title: "Doctors",
+                headerTintColor: colors.text,
+                headerStyle: { backgroundColor: colors.surface },
+              }}
+            />
+            <Stack.Screen
               name="symptoms/index"
               options={{
                 headerShown: true,

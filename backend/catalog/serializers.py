@@ -2,7 +2,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from rest_framework import serializers
 
-from .models import DoctorAvailability, DoctorProfile, DoctorSubscription, Speciality
+from .models import Clinic, DoctorAvailability, DoctorProfile, DoctorSubscription, Speciality
 
 User = get_user_model()
 
@@ -22,6 +22,34 @@ class SpecialitySerializer(serializers.ModelSerializer):
             "created_at",
         )
         read_only_fields = ("created_at",)
+
+
+class ClinicSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Clinic
+        fields = (
+            "id",
+            "name",
+            "address",
+            "city",
+            "area",
+            "phone",
+            "latitude",
+            "longitude",
+            "is_active",
+            "created_at",
+        )
+        read_only_fields = ("created_at",)
+
+    def validate_latitude(self, value):
+        if value < -90 or value > 90:
+            raise serializers.ValidationError("latitude must be between -90 and 90.")
+        return value
+
+    def validate_longitude(self, value):
+        if value < -180 or value > 180:
+            raise serializers.ValidationError("longitude must be between -180 and 180.")
+        return value
 
 
 class DoctorOnboardingSerializer(serializers.Serializer):
@@ -74,6 +102,12 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
         write_only=True,
         required=False,
     )
+    clinic_name = serializers.CharField(
+        source="clinic.name",
+        read_only=True,
+        allow_null=True,
+        required=False,
+    )
     full_name = serializers.CharField(read_only=True)
     has_active_subscription = serializers.SerializerMethodField()
     subscription_status = serializers.CharField(read_only=True)
@@ -89,6 +123,8 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
             "email",
             "specialities",
             "speciality_ids",
+            "clinic",
+            "clinic_name",
             "session_time",
             "is_active",
             "has_active_subscription",

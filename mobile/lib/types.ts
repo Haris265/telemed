@@ -93,6 +93,49 @@ export type ClinicInfo = {
   webhook_path?: string;
 };
 
+export type ClinicNearby = {
+  id: number;
+  name: string;
+  address: string;
+  city: string;
+  area: string;
+  phone: string;
+  latitude: number;
+  longitude: number;
+  distance_km: number;
+  doctor_count?: number;
+};
+
+export type NearbyClinicsResponse = {
+  lat: number;
+  lng: number;
+  radius_km: number;
+  area: string;
+  match_mode: "area" | "nearby";
+  count: number;
+  results: ClinicNearby[];
+};
+
+export type ClinicSpecialitySummary = {
+  id: number;
+  name: string;
+  display_icon: string;
+  is_active: boolean;
+  doctor_count: number;
+};
+
+export type ClinicDetail = {
+  id: number;
+  name: string;
+  address: string;
+  city: string;
+  phone: string;
+  latitude: number;
+  longitude: number;
+  specialities: ClinicSpecialitySummary[];
+  doctors: Doctor[];
+};
+
 export type SymptomUrgency = "routine" | "urgent" | "emergency";
 
 export type SymptomCheckResult = {
