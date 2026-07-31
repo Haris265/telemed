@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -11,10 +11,38 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 
-import { Badge, Button, Card, Empty, ErrorText, Screen, Subtitle, Title } from "@/components/ui";
+import { MonthCalendar, parseDateKey } from "@/components/MonthCalendar";
+import { Button, Empty, ErrorText, Screen, Subtitle, Title } from "@/components/ui";
 import { api } from "@/lib/api";
 import type { DateOption, Doctor } from "@/lib/types";
-import { colors } from "@/constants/theme";
+import { colors, fonts } from "@/constants/theme";
+
+function parseHm(value: string) {
+  const [h, m] = value.split(":").map(Number);
+  return h * 60 + (m || 0);
+}
+
+function formatClock(totalMins: number) {
+  const h = Math.floor(totalMins / 60) % 24;
+  const m = totalMins % 60;
+  const suffix = h >= 12 ? "PM" : "AM";
+  const hour12 = h % 12 || 12;
+  return `${hour12}:${String(m).padStart(2, "0")} ${suffix}`;
+}
+
+function buildSlots(start: string, end: string, sessionMins: number) {
+  const step = Math.max(sessionMins || 15, 5);
+  const startMins = parseHm(start);
+  const endMins = parseHm(end);
+  const slots: string[] = [];
+  for (let t = startMins; t + step <= endMins; t += step) {
+    slots.push(formatClock(t));
+  }
+  if (!slots.length && startMins < endMins) {
+    slots.push(formatClock(startMins));
+  }
+  return slots;
+}
 
 export default function BookDoctorScreen() {
   const { doctorUuid, symptomCheckId } = useLocalSearchParams<{
@@ -23,15 +51,43 @@ export default function BookDoctorScreen() {
   }>();
   const router = useRouter();
   const [doctor, setDoctor] = useState<Doctor | null>(null);
-  const [weekly, setWeekly] = useState<
-    { weekday_display: string; start_time: string; end_time: string }[]
-  >([]);
   const [dates, setDates] = useState<DateOption[]>([]);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
+  const [month, setMonth] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [booking, setBooking] = useState(false);
   const [error, setError] = useState("");
+
+  const availableSet = useMemo(
+    () => new Set(dates.map((d) => d.date)),
+    [dates],
+  );
+
+  const selectedOption = useMemo(
+    () => dates.find((d) => d.date === selectedDate) ?? null,
+    [dates, selectedDate],
+  );
+
+  const slots = useMemo(() => {
+    if (!selectedOption || !doctor) return [];
+    return buildSlots(
+      selectedOption.start,
+      selectedOption.end,
+      doctor.session_time,
+    );
+  }, [selectedOption, doctor]);
+
+  const pickDate = useCallback((date: string) => {
+    setSelectedDate(date);
+    setSelectedSlot(null);
+    const d = parseDateKey(date);
+    setMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+  }, []);
 
   const load = useCallback(async () => {
     if (!doctorUuid) return;
@@ -39,8 +95,17 @@ export default function BookDoctorScreen() {
     try {
       const data = await api.doctorAvailability(String(doctorUuid));
       setDoctor(data.doctor);
-      setWeekly(data.weekly);
       setDates(data.dates);
+      setSelectedDate((prev) => {
+        if (prev && data.dates.some((d) => d.date === prev)) return prev;
+        return data.dates[0]?.date ?? null;
+      });
+      setSelectedSlot(null);
+      const first = data.dates[0]?.date;
+      if (first) {
+        const d = parseDateKey(first);
+        setMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
@@ -57,14 +122,14 @@ export default function BookDoctorScreen() {
   );
 
   async function confirm() {
-    if (!doctor || !selected) return;
+    if (!doctor || !selectedDate || !selectedSlot) return;
     setBooking(true);
     setError("");
     try {
       const checkId = symptomCheckId ? Number(symptomCheckId) : undefined;
       const res = await api.book(
         doctor.uuid,
-        selected,
+        selectedDate,
         Number.isFinite(checkId) ? { symptom_check_id: checkId } : undefined,
       );
       Alert.alert("Booked!", res.queue.message, [
@@ -133,47 +198,54 @@ export default function BookDoctorScreen() {
         <Subtitle>{doctor.session_time} min sessions</Subtitle>
         <ErrorText>{error}</ErrorText>
 
-        <Text style={styles.section}>Weekly hours</Text>
-        <Card style={{ gap: 8 }}>
-          {!weekly.length ? (
-            <Text style={styles.muted}>No weekly schedule set (defaults may apply).</Text>
-          ) : (
-            weekly.map((s, i) => (
-              <Text key={i} style={styles.rowText}>
-                {s.weekday_display}: {s.start_time.slice(0, 5)} – {s.end_time.slice(0, 5)}
-              </Text>
-            ))
-          )}
-        </Card>
-
-        <Text style={styles.section}>Available dates</Text>
+        <Text style={styles.section}>Select date</Text>
         {!dates.length ? (
           <Empty title="No dates available" body="Try again later." />
         ) : (
-          dates.map((d) => {
-            const active = selected === d.date;
-            return (
-              <Pressable
-                key={d.date}
-                onPress={() => setSelected(d.date)}
-                style={[styles.dateRow, active && styles.dateActive]}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.dateLabel}>{d.label}</Text>
-                  <Text style={styles.muted}>{d.timing}</Text>
-                </View>
-                {active ? <Badge label="Selected" tone="success" /> : null}
-              </Pressable>
-            );
-          })
+          <MonthCalendar
+            availableDates={availableSet}
+            selected={selectedDate}
+            onSelect={pickDate}
+            month={month}
+            onMonthChange={setMonth}
+          />
         )}
+
+        {selectedDate ? (
+          <>
+            <Text style={styles.section}>
+              Available slots
+              {selectedOption ? ` · ${selectedOption.label}` : ""}
+            </Text>
+            {!slots.length ? (
+              <Empty title="No slots" body="Nothing open on this day." />
+            ) : (
+              <View style={styles.slotGrid}>
+                {slots.map((slot) => {
+                  const active = selectedSlot === slot;
+                  return (
+                    <Pressable
+                      key={slot}
+                      onPress={() => setSelectedSlot(slot)}
+                      style={[styles.slot, active && styles.slotActive]}
+                    >
+                      <Text style={[styles.slotText, active && styles.slotTextActive]}>
+                        {slot}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
+          </>
+        ) : null}
 
         <View style={{ height: 16 }} />
         <Button
           label={booking ? "Booking…" : "Confirm booking"}
           onPress={confirm}
           loading={booking}
-          disabled={!selected}
+          disabled={!selectedDate || !selectedSlot}
         />
       </ScrollView>
     </Screen>
@@ -185,27 +257,39 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 12,
     fontWeight: "700",
+    fontFamily: fonts.sansBold,
     textTransform: "uppercase",
     letterSpacing: 0.8,
     marginTop: 20,
     marginBottom: 10,
   },
-  muted: { color: colors.muted, fontSize: 13 },
-  rowText: { color: colors.text, fontSize: 14 },
-  dateRow: {
+  slotGrid: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: colors.surface,
-    borderRadius: 14,
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  slot: {
+    minWidth: "30%",
+    flexGrow: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 14,
-    marginBottom: 8,
+    backgroundColor: colors.surface,
+    alignItems: "center",
   },
-  dateActive: {
+  slotActive: {
     borderColor: colors.primary,
-    backgroundColor: "rgba(59,130,246,0.12)",
+    backgroundColor: colors.primary,
   },
-  dateLabel: { color: colors.text, fontWeight: "700" },
+  slotText: {
+    color: colors.text,
+    fontSize: 13,
+    fontFamily: fonts.sansSemi,
+  },
+  slotTextActive: {
+    color: "#fff",
+    fontFamily: fonts.sansBold,
+  },
 });

@@ -19,8 +19,8 @@ def format_clock(t: time) -> str:
 def upcoming_available_dates(
     doctor: DoctorProfile,
     *,
-    days_ahead: int = 21,
-    limit: int = 10,
+    days_ahead: int = 42,
+    limit: int = 42,
 ) -> list[dict]:
     """Return upcoming dates matching doctor's active weekday availability."""
     today = timezone.localdate()

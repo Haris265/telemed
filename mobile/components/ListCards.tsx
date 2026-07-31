@@ -1,9 +1,10 @@
-import { useMemo } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useMemo, useState } from "react";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import { Badge } from "@/components/ui";
 import { useTheme } from "@/lib/theme";
+import { resolveIconUrl, specialityIconName } from "@/lib/specialityIcon";
 import type { Doctor, Speciality } from "@/lib/types";
 
 function initials(name: string) {
@@ -94,9 +95,14 @@ function useCardStyles() {
           backgroundColor: colors.surfaceAlt,
           alignItems: "center",
           justifyContent: "center",
+          overflow: "hidden",
         },
         specIconActive: {
-          backgroundColor: "rgba(15,118,110,0.18)",
+          backgroundColor: colors.primary,
+        },
+        specImage: {
+          width: 44,
+          height: 44,
         },
         specIconText: {
           color: colors.text,
@@ -164,6 +170,37 @@ export function DoctorCard({
   );
 }
 
+function SpecialityIcon({
+  name,
+  displayIcon,
+  active,
+}: {
+  name: string;
+  displayIcon?: string;
+  active?: boolean;
+}) {
+  const { colors } = useTheme();
+  const styles = useCardStyles();
+  const [imgFailed, setImgFailed] = useState(false);
+  const uri = resolveIconUrl(displayIcon);
+  const showImage = !!uri && !imgFailed;
+  const tint = active ? "#fff" : colors.primary;
+
+  return (
+    <View style={[styles.specIcon, active && styles.specIconActive]}>
+      {showImage ? (
+        <Image
+          source={{ uri: uri! }}
+          style={styles.specImage}
+          onError={() => setImgFailed(true)}
+        />
+      ) : (
+        <Ionicons name={specialityIconName(name)} size={22} color={tint} />
+      )}
+    </View>
+  );
+}
+
 export function SpecialityCard({
   item,
   active,
@@ -187,11 +224,11 @@ export function SpecialityCard({
         pressed && { opacity: 0.9 },
       ]}
     >
-      <View style={[styles.specIcon, active && styles.specIconActive]}>
-        <Text style={styles.specIconText}>
-          {(item.display_icon || item.name.slice(0, 1)).toUpperCase().slice(0, 2)}
-        </Text>
-      </View>
+      <SpecialityIcon
+        name={item.name}
+        displayIcon={item.display_icon}
+        active={active}
+      />
       <View style={{ flex: 1 }}>
         <Text style={[styles.specName, active && styles.specNameActive]}>{item.name}</Text>
         {typeof doctorCount === "number" ? (
