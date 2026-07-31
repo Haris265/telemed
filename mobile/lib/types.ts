@@ -41,6 +41,8 @@ export type DateOption = {
   start: string;
   end: string;
   timing: string;
+  booked_count?: number;
+  booked_times?: string[];
 };
 
 export type Appointment = {

@@ -22,6 +22,14 @@ function parseHm(value: string) {
   return h * 60 + (m || 0);
 }
 
+/** 00:00 (or end <= start) = end of day / overnight → +24h */
+function resolveEndMins(start: string, end: string) {
+  const startMins = parseHm(start);
+  let endMins = parseHm(end);
+  if (endMins <= startMins) endMins += 24 * 60;
+  return endMins;
+}
+
 function formatClock(totalMins: number) {
   const h = Math.floor(totalMins / 60) % 24;
   const m = totalMins % 60;
@@ -30,18 +38,70 @@ function formatClock(totalMins: number) {
   return `${hour12}:${String(m).padStart(2, "0")} ${suffix}`;
 }
 
-function buildSlots(start: string, end: string, sessionMins: number) {
+function todayKey() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+type SlotStatus = "open" | "booked" | "past";
+
+type SlotItem = {
+  mins: number;
+  time: string;
+  label: string;
+  status: SlotStatus;
+};
+
+function minsToTime(totalMins: number) {
+  const h = Math.floor(totalMins / 60) % 24;
+  const m = totalMins % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`;
+}
+
+function buildSlotItems(
+  start: string,
+  end: string,
+  sessionMins: number,
+  opts?: { dateKey: string; bookedTimes?: string[] },
+): SlotItem[] {
   const step = Math.max(sessionMins || 15, 5);
   const startMins = parseHm(start);
-  const endMins = parseHm(end);
-  const slots: string[] = [];
+  const endMins = resolveEndMins(start, end);
+  const all: number[] = [];
   for (let t = startMins; t + step <= endMins; t += step) {
-    slots.push(formatClock(t));
+    all.push(t);
   }
-  if (!slots.length && startMins < endMins) {
-    slots.push(formatClock(startMins));
+  if (!all.length && startMins < endMins) {
+    all.push(startMins);
   }
-  return slots;
+
+  const bookedSet = new Set(
+    (opts?.bookedTimes || []).map((t) => t.slice(0, 8)),
+  );
+  const isToday = !!opts?.dateKey && opts.dateKey === todayKey();
+  const nowMins = isToday
+    ? new Date().getHours() * 60 + new Date().getMinutes()
+    : -1;
+
+  return all.map((mins) => {
+    const time = minsToTime(mins);
+    let status: SlotStatus = "open";
+    if (bookedSet.has(time)) status = "booked";
+    else if (isToday && mins <= nowMins) status = "past";
+    return { mins, time, label: formatClock(mins), status };
+  });
+}
+
+function hasOpenSlot(
+  start: string,
+  end: string,
+  sessionMins: number,
+  opts?: { dateKey: string; bookedTimes?: string[] },
+) {
+  return buildSlotItems(start, end, sessionMins, opts).some((s) => s.status === "open");
 }
 
 export default function BookDoctorScreen() {
@@ -63,24 +123,42 @@ export default function BookDoctorScreen() {
   const [booking, setBooking] = useState(false);
   const [error, setError] = useState("");
 
-  const availableSet = useMemo(
-    () => new Set(dates.map((d) => d.date)),
-    [dates],
-  );
+  const openDates = useMemo(() => {
+    if (!doctor) return [] as DateOption[];
+    return dates.filter((d) =>
+      hasOpenSlot(d.start, d.end, doctor.session_time, {
+        dateKey: d.date,
+        bookedTimes: d.booked_times,
+      }),
+    );
+  }, [dates, doctor]);
+
+  // All schedule days stay tappable so booked slots remain visible
+  const availableSet = useMemo(() => new Set(dates.map((d) => d.date)), [dates]);
 
   const selectedOption = useMemo(
     () => dates.find((d) => d.date === selectedDate) ?? null,
     [dates, selectedDate],
   );
 
-  const slots = useMemo(() => {
-    if (!selectedOption || !doctor) return [];
-    return buildSlots(
+  const slotItems = useMemo(() => {
+    if (!selectedOption || !doctor) return [] as SlotItem[];
+    return buildSlotItems(
       selectedOption.start,
       selectedOption.end,
       doctor.session_time,
+      {
+        dateKey: selectedOption.date,
+        bookedTimes: selectedOption.booked_times,
+      },
     );
   }, [selectedOption, doctor]);
+
+  const visibleSelectedSlot =
+    selectedSlot &&
+    slotItems.some((s) => s.time === selectedSlot && s.status === "open")
+      ? selectedSlot
+      : null;
 
   const pickDate = useCallback((date: string) => {
     setSelectedDate(date);
@@ -96,12 +174,18 @@ export default function BookDoctorScreen() {
       const data = await api.doctorAvailability(String(doctorUuid));
       setDoctor(data.doctor);
       setDates(data.dates);
+      const withOpen = data.dates.filter((d) =>
+        hasOpenSlot(d.start, d.end, data.doctor.session_time, {
+          dateKey: d.date,
+          bookedTimes: d.booked_times,
+        }),
+      );
       setSelectedDate((prev) => {
         if (prev && data.dates.some((d) => d.date === prev)) return prev;
-        return data.dates[0]?.date ?? null;
+        return withOpen[0]?.date ?? data.dates[0]?.date ?? null;
       });
       setSelectedSlot(null);
-      const first = data.dates[0]?.date;
+      const first = withOpen[0]?.date ?? data.dates[0]?.date;
       if (first) {
         const d = parseDateKey(first);
         setMonth(new Date(d.getFullYear(), d.getMonth(), 1));
@@ -122,16 +206,15 @@ export default function BookDoctorScreen() {
   );
 
   async function confirm() {
-    if (!doctor || !selectedDate || !selectedSlot) return;
+    if (!doctor || !selectedDate || !visibleSelectedSlot) return;
     setBooking(true);
     setError("");
     try {
       const checkId = symptomCheckId ? Number(symptomCheckId) : undefined;
-      const res = await api.book(
-        doctor.uuid,
-        selectedDate,
-        Number.isFinite(checkId) ? { symptom_check_id: checkId } : undefined,
-      );
+      const res = await api.book(doctor.uuid, selectedDate, {
+        slot_time: visibleSelectedSlot,
+        ...(Number.isFinite(checkId) ? { symptom_check_id: checkId } : {}),
+      });
       Alert.alert("Booked!", res.queue.message, [
         {
           text: "View queue",
@@ -214,29 +297,52 @@ export default function BookDoctorScreen() {
         {selectedDate ? (
           <>
             <Text style={styles.section}>
-              Available slots
+              Slots
               {selectedOption ? ` · ${selectedOption.label}` : ""}
             </Text>
-            {!slots.length ? (
-              <Empty title="No slots" body="Nothing open on this day." />
+            {!slotItems.length ? (
+              <Empty title="No slots" body="No timings set for this day." />
             ) : (
               <View style={styles.slotGrid}>
-                {slots.map((slot) => {
-                  const active = selectedSlot === slot;
+                {slotItems.map((slot) => {
+                  const active = visibleSelectedSlot === slot.time;
+                  const locked = slot.status !== "open";
                   return (
                     <Pressable
-                      key={slot}
-                      onPress={() => setSelectedSlot(slot)}
-                      style={[styles.slot, active && styles.slotActive]}
+                      key={`${slot.time}-${slot.status}`}
+                      disabled={locked}
+                      onPress={() => setSelectedSlot(slot.time)}
+                      style={[
+                        styles.slot,
+                        active && styles.slotActive,
+                        slot.status === "booked" && styles.slotBooked,
+                        slot.status === "past" && styles.slotPast,
+                      ]}
                     >
-                      <Text style={[styles.slotText, active && styles.slotTextActive]}>
-                        {slot}
+                      <Text
+                        style={[
+                          styles.slotText,
+                          active && styles.slotTextActive,
+                          slot.status === "booked" && styles.slotTextBooked,
+                          slot.status === "past" && styles.slotTextPast,
+                        ]}
+                      >
+                        {slot.label}
                       </Text>
+                      {slot.status === "booked" ? (
+                        <Text style={styles.slotBadge}>Booked</Text>
+                      ) : null}
+                      {slot.status === "past" ? (
+                        <Text style={styles.slotBadgeMuted}>Past</Text>
+                      ) : null}
                     </Pressable>
                   );
                 })}
               </View>
             )}
+            {!openDates.some((d) => d.date === selectedDate) && slotItems.length ? (
+              <Text style={styles.hint}>No open slots left on this day — pick another date.</Text>
+            ) : null}
           </>
         ) : null}
 
@@ -245,7 +351,7 @@ export default function BookDoctorScreen() {
           label={booking ? "Booking…" : "Confirm booking"}
           onPress={confirm}
           loading={booking}
-          disabled={!selectedDate || !selectedSlot}
+          disabled={!selectedDate || !visibleSelectedSlot}
         />
       </ScrollView>
     </Screen>
@@ -278,10 +384,20 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.surface,
     alignItems: "center",
+    gap: 2,
   },
   slotActive: {
     borderColor: colors.primary,
     backgroundColor: colors.primary,
+  },
+  slotBooked: {
+    borderColor: "#f0c2c2",
+    backgroundColor: "#fdf2f2",
+  },
+  slotPast: {
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceAlt,
+    opacity: 0.7,
   },
   slotText: {
     color: colors.text,
@@ -291,5 +407,30 @@ const styles = StyleSheet.create({
   slotTextActive: {
     color: "#fff",
     fontFamily: fonts.sansBold,
+  },
+  slotTextBooked: {
+    color: colors.danger,
+    textDecorationLine: "line-through",
+  },
+  slotTextPast: {
+    color: colors.muted,
+  },
+  slotBadge: {
+    fontSize: 10,
+    color: colors.danger,
+    fontFamily: fonts.sansBold,
+    textTransform: "uppercase",
+  },
+  slotBadgeMuted: {
+    fontSize: 10,
+    color: colors.muted,
+    fontFamily: fonts.sansSemi,
+    textTransform: "uppercase",
+  },
+  hint: {
+    marginTop: 10,
+    color: colors.muted,
+    fontSize: 13,
+    fontFamily: fonts.sans,
   },
 });

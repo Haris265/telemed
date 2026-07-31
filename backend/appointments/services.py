@@ -13,7 +13,42 @@ from .models import Appointment
 
 
 def format_clock(t: time) -> str:
+    if t.hour == 0 and t.minute == 0:
+        return "12:00 AM"
     return t.strftime("%I:%M %p").lstrip("0")
+
+
+def format_end_clock(t: time) -> str:
+    """Midnight means end of day."""
+    if t.hour == 0 and t.minute == 0:
+        return "12:00 AM"
+    return format_clock(t)
+
+
+def _minutes(t: time) -> int:
+    return t.hour * 60 + t.minute
+
+
+def resolve_end_minutes(start: time, end: time) -> int:
+    start_m = _minutes(start)
+    end_m = _minutes(end)
+    if end_m <= start_m:
+        end_m += 24 * 60
+    return end_m
+
+
+def generate_slot_times(start: time, end: time, session_mins: int) -> list[time]:
+    step = max(int(session_mins or 15), 5)
+    start_m = _minutes(start)
+    end_m = resolve_end_minutes(start, end)
+    out: list[time] = []
+    t = start_m
+    while t + step <= end_m:
+        out.append(time(hour=(t // 60) % 24, minute=t % 60))
+        t += step
+    if not out and start_m < end_m:
+        out.append(start)
+    return out
 
 
 def upcoming_available_dates(
@@ -34,6 +69,16 @@ def upcoming_available_dates(
     for slot in slots:
         by_weekday.setdefault(slot.weekday, []).append(slot)
 
+    booked_times_by_date: dict[str, list[str]] = {}
+    for appt in (
+        Appointment.objects.filter(doctor=doctor, token_date__gte=today)
+        .exclude(status=Appointment.Status.CANCELLED)
+        .only("token_date", "scheduled_at")
+    ):
+        key = appt.token_date.isoformat()
+        local_t = timezone.localtime(appt.scheduled_at).time().strftime("%H:%M:%S")
+        booked_times_by_date.setdefault(key, []).append(local_t)
+
     options: list[dict] = []
     for offset in range(0, days_ahead + 1):
         day = today + timedelta(days=offset)
@@ -41,23 +86,31 @@ def upcoming_available_dates(
         day_slots = by_weekday.get(weekday)
         if day_slots:
             slot = day_slots[0]
+            key = day.isoformat()
+            booked_times = sorted(set(booked_times_by_date.get(key, [])))
             options.append(
                 {
-                    "date": day.isoformat(),
+                    "date": key,
                     "label": day.strftime("%a %d %b %Y"),
                     "start": slot.start_time.strftime("%H:%M:%S"),
                     "end": slot.end_time.strftime("%H:%M:%S"),
-                    "timing": f"{format_clock(slot.start_time)} – {format_clock(slot.end_time)}",
+                    "timing": f"{format_clock(slot.start_time)} – {format_end_clock(slot.end_time)}",
+                    "booked_count": len(booked_times),
+                    "booked_times": booked_times,
                 }
             )
         elif not slots and offset < 7:
+            key = day.isoformat()
+            booked_times = sorted(set(booked_times_by_date.get(key, [])))
             options.append(
                 {
-                    "date": day.isoformat(),
+                    "date": key,
                     "label": day.strftime("%a %d %b %Y"),
                     "start": "09:00:00",
-                    "end": "17:00:00",
-                    "timing": "9:00 AM – 5:00 PM (default)",
+                    "end": "00:00:00",
+                    "timing": "9:00 AM – 12:00 AM (default)",
+                    "booked_count": len(booked_times),
+                    "booked_times": booked_times,
                 }
             )
         if len(options) >= limit:
@@ -71,6 +124,7 @@ def book_token(
     token_date: date,
     start_time: time | None = None,
     *,
+    slot_time: time | None = None,
     notes: str = "Booked via WhatsApp",
 ) -> Appointment:
     with transaction.atomic():
@@ -97,10 +151,31 @@ def book_token(
         )
         next_token = (locked["m"] or 0) + 1
 
-        base = datetime.combine(token_date, start_time or time(9, 0))
-        if timezone.is_naive(base):
-            base = timezone.make_aware(base, timezone.get_current_timezone())
-        scheduled_at = base + timedelta(minutes=doctor.session_time * (next_token - 1))
+        day_start = start_time or time(9, 0)
+        if slot_time is not None:
+            base = datetime.combine(token_date, slot_time)
+            if timezone.is_naive(base):
+                base = timezone.make_aware(base, timezone.get_current_timezone())
+            scheduled_at = base
+            taken = (
+                Appointment.objects.select_for_update()
+                .filter(
+                    doctor=doctor,
+                    token_date=token_date,
+                    scheduled_at=scheduled_at,
+                )
+                .exclude(status=Appointment.Status.CANCELLED)
+                .exists()
+            )
+            if taken:
+                raise ValueError("This time slot is already booked. Please pick another.")
+        else:
+            base = datetime.combine(token_date, day_start)
+            if timezone.is_naive(base):
+                base = timezone.make_aware(base, timezone.get_current_timezone())
+            scheduled_at = base + timedelta(
+                minutes=doctor.session_time * (next_token - 1)
+            )
 
         return Appointment.objects.create(
             patient=patient,

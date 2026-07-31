@@ -1,3 +1,5 @@
+from datetime import time
+
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from rest_framework import serializers
@@ -223,6 +225,7 @@ class DoctorAvailabilitySerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         start = attrs.get("start_time") or getattr(self.instance, "start_time", None)
         end = attrs.get("end_time") or getattr(self.instance, "end_time", None)
-        if start and end and start >= end:
+        # Midnight (00:00) means end of day, so 09:00–00:00 is valid.
+        if start and end and end != time(0, 0) and start >= end:
             raise serializers.ValidationError("end_time must be after start_time.")
         return attrs

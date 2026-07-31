@@ -172,6 +172,7 @@ class PatientDoctorSerializer(serializers.ModelSerializer):
 class PatientBookSerializer(serializers.Serializer):
     doctor_uuid = serializers.UUIDField()
     token_date = serializers.DateField()
+    slot_time = serializers.TimeField(required=False)
     symptoms = serializers.CharField(required=False, allow_blank=True, max_length=2000)
     symptom_check_id = serializers.IntegerField(required=False, min_value=1)
 
@@ -189,7 +190,10 @@ class PatientBookSerializer(serializers.Serializer):
         return value
 
     def validate(self, attrs):
-        from appointments.services import upcoming_available_dates
+        from datetime import time as time_cls
+
+        from appointments.services import generate_slot_times, upcoming_available_dates
+        from django.utils import timezone
 
         doctor = DoctorProfile.objects.filter(
             uuid=attrs["doctor_uuid"], is_active=True
@@ -208,6 +212,38 @@ class PatientBookSerializer(serializers.Serializer):
         match = next(o for o in options if o["date"] == token_date.isoformat())
         attrs["start"] = match["start"]
         attrs["doctor"] = doctor
+
+        slot_time = attrs.get("slot_time")
+        if slot_time is None:
+            raise serializers.ValidationError(
+                {"slot_time": "Please select a time slot."}
+            )
+
+        start_parts = [int(x) for x in match["start"].split(":")[:3]]
+        end_parts = [int(x) for x in match["end"].split(":")[:3]]
+        day_start = time_cls(*start_parts)
+        day_end = time_cls(*end_parts)
+        valid = generate_slot_times(day_start, day_end, doctor.session_time)
+        if slot_time not in valid:
+            raise serializers.ValidationError(
+                {"slot_time": "Selected time is not available for this doctor."}
+            )
+
+        booked = set(match.get("booked_times") or [])
+        slot_key = slot_time.strftime("%H:%M:%S")
+        if slot_key in booked:
+            raise serializers.ValidationError(
+                {"slot_time": "This time slot is already booked."}
+            )
+
+        if token_date == timezone.localdate():
+            now = timezone.localtime().time()
+            if slot_time <= now:
+                raise serializers.ValidationError(
+                    {"slot_time": "Selected time has already passed."}
+                )
+
+        attrs["slot_time"] = slot_time
         return attrs
 
 

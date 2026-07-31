@@ -135,6 +135,8 @@ export const api = {
         start: string;
         end: string;
         timing: string;
+        booked_count?: number;
+        booked_times?: string[];
       }[];
     }>(`/api/patient/doctors/${uuid}/availability/`),
   appointments: (status?: string) => {
@@ -147,7 +149,7 @@ export const api = {
   book: (
     doctor_uuid: string,
     token_date: string,
-    options?: { symptoms?: string; symptom_check_id?: number },
+    options?: { symptoms?: string; symptom_check_id?: number; slot_time?: string },
   ) =>
     request<{ appointment: Appointment; queue: QueueInfo }>(
       "/api/patient/appointments/",
@@ -156,6 +158,7 @@ export const api = {
         body: JSON.stringify({
           doctor_uuid,
           token_date,
+          ...(options?.slot_time ? { slot_time: options.slot_time } : {}),
           ...(options?.symptoms ? { symptoms: options.symptoms } : {}),
           ...(options?.symptom_check_id
             ? { symptom_check_id: options.symptom_check_id }

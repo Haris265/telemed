@@ -228,6 +228,7 @@ class PatientAppointmentListCreateView(APIView):
                 doctor,
                 token_date,
                 start_time,
+                slot_time=ser.validated_data.get("slot_time"),
                 notes=notes,
             )
         except ValueError as exc:
