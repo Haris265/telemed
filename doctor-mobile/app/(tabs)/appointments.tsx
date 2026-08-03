@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   RefreshControl,
   ScrollView,
@@ -6,6 +6,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { useLocalSearchParams } from "expo-router";
 
 import { AppointmentCard } from "@/components/AppointmentCard";
 import { FilterChips, ResultSummary, type FilterOption } from "@/components/FilterChips";
@@ -16,9 +17,17 @@ import { api } from "@/lib/api";
 import type { Appointment } from "@/lib/types";
 import { formatDate, todayIso } from "@/lib/format";
 import { useScreenData } from "@/lib/useScreenData";
-import { colors } from "@/constants/theme";
+import { useTheme } from "@/lib/theme";
 
 type Filter = "all" | "today" | "future" | "completed" | "rejected";
+
+const FILTERS: Filter[] = ["all", "today", "future", "completed", "rejected"];
+
+function parseFilter(value?: string | string[]): Filter | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (raw && FILTERS.includes(raw as Filter)) return raw as Filter;
+  return null;
+}
 
 type FilterCounts = Record<Filter, number>;
 
@@ -90,7 +99,11 @@ async function fetchCounts(today: string): Promise<FilterCounts> {
 }
 
 export default function AppointmentsScreen() {
-  const [filter, setFilter] = useState<Filter>("today");
+  const { colors, fonts } = useTheme();
+  const params = useLocalSearchParams<{ filter?: string }>();
+  const [filter, setFilter] = useState<Filter>(
+    () => parseFilter(params.filter) || "today",
+  );
   const [search, setSearch] = useState("");
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [counts, setCounts] = useState<FilterCounts>({
@@ -100,6 +113,41 @@ export default function AppointmentsScreen() {
     completed: 0,
     rejected: 0,
   });
+
+  useEffect(() => {
+    const next = parseFilter(params.filter);
+    if (next) setFilter(next);
+  }, [params.filter]);
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        scroll: { paddingBottom: 32 },
+        header: { paddingHorizontal: 16, paddingTop: 4 },
+        tools: { paddingHorizontal: 16, gap: 14, marginTop: 16 },
+        list: { paddingHorizontal: 16, gap: 10, marginTop: 4 },
+        group: { marginBottom: 18, gap: 8 },
+        groupTitle: {
+          color: colors.text,
+          fontSize: 15,
+          fontFamily: fonts.sansExtra,
+        },
+        groupMeta: {
+          color: colors.muted,
+          fontSize: 12,
+          fontFamily: fonts.sansSemi,
+          marginBottom: 4,
+        },
+        groupList: { gap: 10 },
+        error: {
+          color: colors.danger,
+          paddingHorizontal: 16,
+          marginTop: 8,
+          fontFamily: fonts.sans,
+        },
+      }),
+    [colors, fonts],
+  );
 
   const load = useCallback(async () => {
     const today = todayIso();
@@ -211,46 +259,3 @@ export default function AppointmentsScreen() {
     </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  scroll: {
-    paddingBottom: 32,
-  },
-  header: {
-    paddingHorizontal: 16,
-    paddingTop: 4,
-  },
-  tools: {
-    paddingHorizontal: 16,
-    gap: 14,
-    marginTop: 16,
-  },
-  list: {
-    paddingHorizontal: 16,
-    gap: 10,
-    marginTop: 4,
-  },
-  group: {
-    marginBottom: 18,
-    gap: 8,
-  },
-  groupTitle: {
-    color: colors.text,
-    fontSize: 15,
-    fontWeight: "800",
-  },
-  groupMeta: {
-    color: colors.muted,
-    fontSize: 12,
-    fontWeight: "600",
-    marginBottom: 4,
-  },
-  groupList: {
-    gap: 10,
-  },
-  error: {
-    color: colors.danger,
-    paddingHorizontal: 16,
-    marginTop: 8,
-  },
-});

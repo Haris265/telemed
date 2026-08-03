@@ -16,7 +16,7 @@ import { api } from "@/lib/api";
 import type { DoctorPatientSummary } from "@/lib/types";
 import { formatDate, formatTime } from "@/lib/format";
 import { useScreenData } from "@/lib/useScreenData";
-import { colors } from "@/constants/theme";
+import { useTheme } from "@/lib/theme";
 
 function matchesPatient(patient: DoctorPatientSummary, query: string) {
   const q = query.trim().toLowerCase();
@@ -30,8 +30,65 @@ function matchesPatient(patient: DoctorPatientSummary, query: string) {
 
 export default function PatientsScreen() {
   const router = useRouter();
+  const { colors, fonts } = useTheme();
   const [patients, setPatients] = useState<DoctorPatientSummary[]>([]);
   const [search, setSearch] = useState("");
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        scroll: { paddingBottom: 32 },
+        header: { paddingHorizontal: 16, paddingTop: 4 },
+        tools: { paddingHorizontal: 16, gap: 12, marginTop: 16 },
+        count: {
+          color: colors.muted,
+          fontSize: 12,
+          fontFamily: fonts.sansBold,
+        },
+        list: { paddingHorizontal: 16, gap: 10, marginTop: 8 },
+        card: {
+          backgroundColor: colors.surface,
+          borderRadius: 14,
+          borderWidth: 1,
+          borderColor: colors.border,
+          padding: 14,
+          gap: 4,
+        },
+        row: {
+          flexDirection: "row",
+          justifyContent: "space-between",
+          alignItems: "center",
+        },
+        name: {
+          color: colors.text,
+          fontSize: 16,
+          fontFamily: fonts.sansBold,
+        },
+        meta: {
+          color: colors.muted,
+          fontSize: 13,
+          fontFamily: fonts.sans,
+        },
+        upcoming: {
+          color: colors.warning,
+          fontSize: 12,
+          fontFamily: fonts.sansSemi,
+        },
+        next: {
+          color: colors.primary,
+          fontSize: 13,
+          fontFamily: fonts.sansSemi,
+          marginTop: 4,
+        },
+        error: {
+          color: colors.danger,
+          paddingHorizontal: 16,
+          marginTop: 8,
+          fontFamily: fonts.sans,
+        },
+      }),
+    [colors, fonts],
+  );
 
   const load = useCallback(async () => {
     const data = await api.patients();
@@ -126,66 +183,3 @@ export default function PatientsScreen() {
     </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  scroll: {
-    paddingBottom: 32,
-  },
-  header: {
-    paddingHorizontal: 16,
-    paddingTop: 4,
-  },
-  tools: {
-    paddingHorizontal: 16,
-    gap: 12,
-    marginTop: 16,
-  },
-  count: {
-    color: colors.muted,
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  list: {
-    paddingHorizontal: 16,
-    gap: 10,
-    marginTop: 8,
-  },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 14,
-    gap: 4,
-  },
-  row: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  name: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  meta: {
-    color: colors.muted,
-    fontSize: 13,
-  },
-  upcoming: {
-    color: colors.warning,
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  next: {
-    color: colors.primary,
-    fontSize: 13,
-    fontWeight: "600",
-    marginTop: 4,
-  },
-  error: {
-    color: colors.danger,
-    paddingHorizontal: 16,
-    marginTop: 8,
-  },
-});

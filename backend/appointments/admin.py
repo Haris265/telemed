@@ -21,6 +21,15 @@ class ClinicalNoteAdmin(admin.ModelAdmin):
 
 @admin.register(Appointment)
 class AppointmentAdmin(admin.ModelAdmin):
-    list_display = ("patient", "doctor", "scheduled_at", "status", "created_at")
+    list_display = (
+        "patient",
+        "doctor",
+        "scheduled_at",
+        "status",
+        "visit_started_at",
+        "visit_ended_at",
+        "created_at",
+    )
     list_filter = ("status",)
     search_fields = ("patient__name", "patient__phone", "doctor__first_name", "doctor__last_name")
+    readonly_fields = ("visit_started_at", "visit_ended_at")

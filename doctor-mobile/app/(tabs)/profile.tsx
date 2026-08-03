@@ -3,19 +3,39 @@ import {
   Alert,
   RefreshControl,
   ScrollView,
-  StyleSheet,
   Text,
   View,
 } from "react-native";
 
 import { LoadingState } from "@/components/LoadingState";
-import { Button, Card, Screen, Subtitle, Title } from "@/components/ui";
+import { Button, Card, Screen, Subtitle, Title, useThemedStyles } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
 import { useScreenData } from "@/lib/useScreenData";
-import { colors } from "@/constants/theme";
+import { useTheme } from "@/lib/theme";
 
 export default function ProfileScreen() {
   const { doctor, user, signOut, refreshMe } = useAuth();
+  const { colors } = useTheme();
+  const styles = useThemedStyles((c, f) => ({
+    label: {
+      color: c.muted,
+      fontSize: 12,
+      fontFamily: f.sansBold,
+      textTransform: "uppercase" as const,
+      letterSpacing: 0.6,
+      marginTop: 4,
+    },
+    value: {
+      color: c.text,
+      fontSize: 16,
+      fontFamily: f.sansSemi,
+    },
+    error: {
+      color: c.danger,
+      marginBottom: 12,
+      fontFamily: f.sans,
+    },
+  }));
 
   const load = useCallback(async () => {
     await refreshMe();
@@ -88,21 +108,3 @@ export default function ProfileScreen() {
     </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  label: {
-    color: colors.muted,
-    fontSize: 12,
-    fontWeight: "600",
-    marginTop: 4,
-  },
-  value: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  error: {
-    color: colors.danger,
-    marginBottom: 12,
-  },
-});

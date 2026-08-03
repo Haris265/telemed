@@ -67,6 +67,7 @@ class AppointmentSerializer(serializers.ModelSerializer):
     patient_uuid = serializers.UUIDField(source="patient.uuid", read_only=True)
     doctor_name = serializers.CharField(source="doctor.full_name", read_only=True)
     token_code = serializers.CharField(read_only=True)
+    visit_duration_seconds = serializers.SerializerMethodField()
 
     class Meta:
         model = Appointment
@@ -85,6 +86,9 @@ class AppointmentSerializer(serializers.ModelSerializer):
             "status",
             "notes",
             "rejection_reason",
+            "visit_started_at",
+            "visit_ended_at",
+            "visit_duration_seconds",
             "created_at",
             "updated_at",
         )
@@ -94,7 +98,18 @@ class AppointmentSerializer(serializers.ModelSerializer):
             "token_date",
             "token_number",
             "token_code",
+            "visit_started_at",
+            "visit_ended_at",
+            "visit_duration_seconds",
         )
+
+    def get_visit_duration_seconds(self, obj):
+        if not obj.visit_started_at:
+            return None
+        from django.utils import timezone
+
+        end = obj.visit_ended_at or timezone.now()
+        return max(0, int((end - obj.visit_started_at).total_seconds()))
 
 
 class AppointmentDetailSerializer(AppointmentSerializer):

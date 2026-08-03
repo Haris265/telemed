@@ -70,6 +70,9 @@ export type Appointment = {
   status: AppointmentStatus;
   notes: string;
   rejection_reason?: string;
+  visit_started_at?: string | null;
+  visit_ended_at?: string | null;
+  visit_duration_seconds?: number | null;
   created_at: string;
   updated_at: string;
   clinical_note?: ClinicalNote | null;

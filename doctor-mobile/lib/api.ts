@@ -171,6 +171,16 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
+  startVisit: (id: number) =>
+    request<Appointment>(`/api/doctor/appointments/${id}/start/`, {
+      method: "POST",
+    }),
+
+  endVisit: (id: number) =>
+    request<Appointment>(`/api/doctor/appointments/${id}/end/`, {
+      method: "POST",
+    }),
+
   saveClinicalNote: (id: number, note: ClinicalNote) =>
     request<ClinicalNote>(`/api/doctor/appointments/${id}/clinical/`, {
       method: "PUT",

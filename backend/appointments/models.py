@@ -33,6 +33,8 @@ class Appointment(models.Model):
     )
     notes = models.TextField(blank=True, default="")
     rejection_reason = models.TextField(blank=True, default="")
+    visit_started_at = models.DateTimeField(null=True, blank=True)
+    visit_ended_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

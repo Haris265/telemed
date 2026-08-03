@@ -1,7 +1,7 @@
-import { ScrollView, StyleSheet, Text, Pressable, View } from "react-native";
+import { ScrollView, Text, Pressable, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
-import { colors } from "@/constants/theme";
+import { useTheme } from "@/lib/theme";
 
 export type FilterOption = {
   id: string;
@@ -17,11 +17,13 @@ type Props = {
 };
 
 export function FilterChips({ options, selectedId, onSelect }: Props) {
+  const { colors, fonts } = useTheme();
+
   return (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.row}
+      contentContainerStyle={{ gap: 8, paddingVertical: 2 }}
     >
       {options.map((opt) => {
         const active = opt.id === selectedId;
@@ -30,9 +32,20 @@ export function FilterChips({ options, selectedId, onSelect }: Props) {
             key={opt.id}
             onPress={() => onSelect(opt.id)}
             style={({ pressed }) => [
-              styles.chip,
-              active && styles.chipActive,
-              pressed && { opacity: 0.85 },
+              {
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+                borderWidth: 1,
+                borderColor: active ? colors.primary : colors.border,
+                backgroundColor: active
+                  ? "rgba(15,118,110,0.12)"
+                  : colors.surface,
+                borderRadius: 999,
+                paddingHorizontal: 14,
+                paddingVertical: 9,
+                opacity: pressed ? 0.85 : 1,
+              },
             ]}
           >
             {opt.icon ? (
@@ -42,12 +55,36 @@ export function FilterChips({ options, selectedId, onSelect }: Props) {
                 color={active ? colors.primary : colors.muted}
               />
             ) : null}
-            <Text style={[styles.label, active && styles.labelActive]}>
+            <Text
+              style={{
+                color: active ? colors.primary : colors.muted,
+                fontSize: 13,
+                fontFamily: fonts.sansSemi,
+              }}
+            >
               {opt.label}
             </Text>
             {typeof opt.count === "number" ? (
-              <View style={[styles.countBadge, active && styles.countBadgeActive]}>
-                <Text style={[styles.countText, active && styles.countTextActive]}>
+              <View
+                style={{
+                  minWidth: 22,
+                  height: 22,
+                  borderRadius: 11,
+                  backgroundColor: active
+                    ? "rgba(15,118,110,0.2)"
+                    : colors.surfaceAlt,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  paddingHorizontal: 6,
+                }}
+              >
+                <Text
+                  style={{
+                    color: active ? colors.primary : colors.muted,
+                    fontSize: 11,
+                    fontFamily: fonts.sansExtra,
+                  }}
+                >
                   {opt.count}
                 </Text>
               </View>
@@ -60,77 +97,37 @@ export function FilterChips({ options, selectedId, onSelect }: Props) {
 }
 
 export function ResultSummary({ label, hint }: { label: string; hint?: string }) {
+  const { colors, fonts } = useTheme();
   return (
-    <View style={styles.summary}>
-      <Text style={styles.summaryLabel}>{label}</Text>
-      {hint ? <Text style={styles.summaryHint}>{hint}</Text> : null}
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        marginTop: 4,
+        marginBottom: 8,
+      }}
+    >
+      <Text
+        style={{
+          color: colors.text,
+          fontSize: 14,
+          fontFamily: fonts.sansBold,
+        }}
+      >
+        {label}
+      </Text>
+      {hint ? (
+        <Text
+          style={{
+            color: colors.muted,
+            fontSize: 12,
+            fontFamily: fonts.sansSemi,
+          }}
+        >
+          {hint}
+        </Text>
+      ) : null}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  row: {
-    gap: 8,
-    paddingVertical: 2,
-  },
-  chip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-  },
-  chipActive: {
-    borderColor: colors.primary,
-    backgroundColor: "rgba(59,130,246,0.18)",
-  },
-  label: {
-    color: colors.muted,
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  labelActive: {
-    color: colors.primary,
-  },
-  countBadge: {
-    minWidth: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: colors.surfaceAlt,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 6,
-  },
-  countBadgeActive: {
-    backgroundColor: "rgba(59,130,246,0.35)",
-  },
-  countText: {
-    color: colors.muted,
-    fontSize: 11,
-    fontWeight: "800",
-  },
-  countTextActive: {
-    color: colors.primary,
-  },
-  summary: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 4,
-    marginBottom: 8,
-  },
-  summaryLabel: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  summaryHint: {
-    color: colors.muted,
-    fontSize: 12,
-    fontWeight: "600",
-  },
-});

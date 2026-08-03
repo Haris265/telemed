@@ -135,6 +135,54 @@ class DoctorAppointmentDetailView(APIView):
         )
         serializer.is_valid(raise_exception=True)
         serializer.save()
+        appointment.refresh_from_db()
+        if (
+            appointment.status == Appointment.Status.COMPLETED
+            and appointment.visit_started_at
+            and not appointment.visit_ended_at
+        ):
+            appointment.visit_ended_at = timezone.now()
+            appointment.save(update_fields=["visit_ended_at", "updated_at"])
+        return Response(AppointmentDetailSerializer(appointment).data)
+
+
+class DoctorAppointmentStartVisitView(APIView):
+    permission_classes = [IsDoctor]
+
+    def post(self, request, pk):
+        appointment = get_doctor_appointment(request.user.doctor_profile, pk)
+        if appointment.status != Appointment.Status.UPCOMING:
+            return Response(
+                {"detail": "Only upcoming visits can be started."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if appointment.visit_started_at:
+            return Response(
+                {"detail": "Visit already started."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        appointment.visit_started_at = timezone.now()
+        appointment.save(update_fields=["visit_started_at", "updated_at"])
+        return Response(AppointmentDetailSerializer(appointment).data)
+
+
+class DoctorAppointmentEndVisitView(APIView):
+    permission_classes = [IsDoctor]
+
+    def post(self, request, pk):
+        appointment = get_doctor_appointment(request.user.doctor_profile, pk)
+        if not appointment.visit_started_at:
+            return Response(
+                {"detail": "Start the visit before ending it."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if appointment.visit_ended_at:
+            return Response(
+                {"detail": "Visit already ended."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        appointment.visit_ended_at = timezone.now()
+        appointment.save(update_fields=["visit_ended_at", "updated_at"])
         return Response(AppointmentDetailSerializer(appointment).data)
 
 
