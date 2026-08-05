@@ -171,6 +171,7 @@ class PatientDoctorSerializer(serializers.ModelSerializer):
 
 class PatientBookSerializer(serializers.Serializer):
     doctor_uuid = serializers.UUIDField()
+    clinic_id = serializers.IntegerField()
     token_date = serializers.DateField()
     slot_time = serializers.TimeField(required=False)
     symptoms = serializers.CharField(required=False, allow_blank=True, max_length=2000)
@@ -190,10 +191,13 @@ class PatientBookSerializer(serializers.Serializer):
         return value
 
     def validate(self, attrs):
-        from datetime import time as time_cls
-
-        from appointments.services import generate_slot_times, upcoming_available_dates
-        from django.utils import timezone
+        from appointments.services import (
+            generate_slots_for_windows,
+            pakistan_now,
+            pakistan_today,
+            upcoming_available_dates,
+        )
+        from catalog.models import Clinic, DoctorClinic
 
         doctor = DoctorProfile.objects.filter(
             uuid=attrs["doctor_uuid"], is_active=True
@@ -202,16 +206,29 @@ class PatientBookSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 {"doctor_uuid": "Doctor not found or inactive."}
             )
+
+        clinic = Clinic.objects.filter(pk=attrs["clinic_id"], is_active=True).first()
+        if not clinic:
+            raise serializers.ValidationError({"clinic_id": "Clinic not found."})
+        if not DoctorClinic.objects.filter(doctor=doctor, clinic=clinic).exists():
+            raise serializers.ValidationError(
+                {"clinic_id": "This doctor does not practice at the selected clinic."}
+            )
+
         token_date = attrs["token_date"]
-        options = upcoming_available_dates(doctor)
+        options = upcoming_available_dates(doctor, clinic=clinic)
         allowed = {o["date"] for o in options}
         if token_date.isoformat() not in allowed:
             raise serializers.ValidationError(
-                {"token_date": "Selected date is not available for this doctor."}
+                {"token_date": "Selected date is not available at this clinic."}
             )
         match = next(o for o in options if o["date"] == token_date.isoformat())
         attrs["start"] = match["start"]
         attrs["doctor"] = doctor
+        attrs["clinic"] = clinic
+        attrs["windows"] = match.get("windows") or [
+            {"start": match["start"], "end": match["end"]}
+        ]
 
         slot_time = attrs.get("slot_time")
         if slot_time is None:
@@ -219,14 +236,10 @@ class PatientBookSerializer(serializers.Serializer):
                 {"slot_time": "Please select a time slot."}
             )
 
-        start_parts = [int(x) for x in match["start"].split(":")[:3]]
-        end_parts = [int(x) for x in match["end"].split(":")[:3]]
-        day_start = time_cls(*start_parts)
-        day_end = time_cls(*end_parts)
-        valid = generate_slot_times(day_start, day_end, doctor.session_time)
+        valid = generate_slots_for_windows(attrs["windows"], doctor.session_time)
         if slot_time not in valid:
             raise serializers.ValidationError(
-                {"slot_time": "Selected time is not available for this doctor."}
+                {"slot_time": "Selected time is not available for this clinic."}
             )
 
         booked = set(match.get("booked_times") or [])
@@ -236,8 +249,8 @@ class PatientBookSerializer(serializers.Serializer):
                 {"slot_time": "This time slot is already booked."}
             )
 
-        if token_date == timezone.localdate():
-            now = timezone.localtime().time()
+        if token_date == pakistan_today():
+            now = pakistan_now().time()
             if slot_time <= now:
                 raise serializers.ValidationError(
                     {"slot_time": "Selected time has already passed."}

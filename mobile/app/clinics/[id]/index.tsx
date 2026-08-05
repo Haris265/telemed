@@ -208,7 +208,12 @@ export default function ClinicDetailScreen() {
             <DoctorCard
               key={doctor.uuid}
               doctor={doctor}
-              onPress={() => router.push(`/book/${doctor.uuid}`)}
+              onPress={() =>
+                router.push({
+                  pathname: "/book/[doctorUuid]",
+                  params: { doctorUuid: doctor.uuid, clinicId: String(clinicId) },
+                })
+              }
             />
           ))
         )}

@@ -130,7 +130,15 @@ export default function ClinicSpecialityDoctorsScreen() {
           <DoctorCard
             doctor={item}
             actionLabel="Book"
-            onPress={() => router.push(`/book/${item.uuid}`)}
+            onPress={() =>
+              router.push({
+                pathname: "/book/[doctorUuid]",
+                params: {
+                  doctorUuid: item.uuid,
+                  clinicId: String(clinicId),
+                },
+              })
+            }
           />
         )}
       />

@@ -14,7 +14,7 @@ import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import { MonthCalendar, parseDateKey } from "@/components/MonthCalendar";
 import { Button, Empty, ErrorText, Screen, Subtitle, Title } from "@/components/ui";
 import { api } from "@/lib/api";
-import type { DateOption, Doctor } from "@/lib/types";
+import type { DateOption, Doctor, DoctorClinicOption } from "@/lib/types";
 import { colors, fonts } from "@/constants/theme";
 
 function parseHm(value: string) {
@@ -38,12 +38,24 @@ function formatClock(totalMins: number) {
   return `${hour12}:${String(m).padStart(2, "0")} ${suffix}`;
 }
 
-function todayKey() {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, "0");
-  const d = String(now.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
+/** Wall-clock "now" in Asia/Karachi (Pakistan). */
+function pakistanParts() {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Karachi",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
+  const parts = Object.fromEntries(
+    fmt.formatToParts(new Date()).map((p) => [p.type, p.value]),
+  );
+  return {
+    dateKey: `${parts.year}-${parts.month}-${parts.day}`,
+    mins: Number(parts.hour) * 60 + Number(parts.minute),
+  };
 }
 
 type SlotStatus = "open" | "booked" | "past";
@@ -61,30 +73,31 @@ function minsToTime(totalMins: number) {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`;
 }
 
-function buildSlotItems(
-  start: string,
-  end: string,
+function buildSlotItemsFromWindows(
+  windows: { start: string; end: string }[],
   sessionMins: number,
   opts?: { dateKey: string; bookedTimes?: string[] },
 ): SlotItem[] {
   const step = Math.max(sessionMins || 15, 5);
-  const startMins = parseHm(start);
-  const endMins = resolveEndMins(start, end);
-  const all: number[] = [];
-  for (let t = startMins; t + step <= endMins; t += step) {
-    all.push(t);
+  const allSet = new Set<number>();
+  for (const win of windows) {
+    const startMins = parseHm(win.start);
+    const endMins = resolveEndMins(win.start, win.end);
+    for (let t = startMins; t + step <= endMins; t += step) {
+      allSet.add(t);
+    }
+    if (!allSet.size && startMins < endMins) {
+      allSet.add(startMins);
+    }
   }
-  if (!all.length && startMins < endMins) {
-    all.push(startMins);
-  }
+  const all = Array.from(allSet).sort((a, b) => a - b);
 
   const bookedSet = new Set(
     (opts?.bookedTimes || []).map((t) => t.slice(0, 8)),
   );
-  const isToday = !!opts?.dateKey && opts.dateKey === todayKey();
-  const nowMins = isToday
-    ? new Date().getHours() * 60 + new Date().getMinutes()
-    : -1;
+  const pk = pakistanParts();
+  const isToday = !!opts?.dateKey && opts.dateKey === pk.dateKey;
+  const nowMins = isToday ? pk.mins : -1;
 
   return all.map((mins) => {
     const time = minsToTime(mins);
@@ -95,22 +108,36 @@ function buildSlotItems(
   });
 }
 
+function windowsFor(option: DateOption) {
+  if (option.windows?.length) return option.windows;
+  return [{ start: option.start, end: option.end }];
+}
+
 function hasOpenSlot(
-  start: string,
-  end: string,
+  option: DateOption,
   sessionMins: number,
-  opts?: { dateKey: string; bookedTimes?: string[] },
 ) {
-  return buildSlotItems(start, end, sessionMins, opts).some((s) => s.status === "open");
+  return buildSlotItemsFromWindows(windowsFor(option), sessionMins, {
+    dateKey: option.date,
+    bookedTimes: option.booked_times,
+  }).some((s) => s.status === "open");
 }
 
 export default function BookDoctorScreen() {
-  const { doctorUuid, symptomCheckId } = useLocalSearchParams<{
-    doctorUuid: string;
-    symptomCheckId?: string;
-  }>();
+  const { doctorUuid, symptomCheckId, clinicId: clinicIdParam } =
+    useLocalSearchParams<{
+      doctorUuid: string;
+      symptomCheckId?: string;
+      clinicId?: string;
+    }>();
   const router = useRouter();
+  const presetClinicId = clinicIdParam ? Number(clinicIdParam) : NaN;
+
   const [doctor, setDoctor] = useState<Doctor | null>(null);
+  const [clinics, setClinics] = useState<DoctorClinicOption[]>([]);
+  const [selectedClinicId, setSelectedClinicId] = useState<number | null>(
+    Number.isFinite(presetClinicId) ? presetClinicId : null,
+  );
   const [dates, setDates] = useState<DateOption[]>([]);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
@@ -123,17 +150,16 @@ export default function BookDoctorScreen() {
   const [booking, setBooking] = useState(false);
   const [error, setError] = useState("");
 
+  const selectedClinic = useMemo(
+    () => clinics.find((c) => c.id === selectedClinicId) ?? null,
+    [clinics, selectedClinicId],
+  );
+
   const openDates = useMemo(() => {
     if (!doctor) return [] as DateOption[];
-    return dates.filter((d) =>
-      hasOpenSlot(d.start, d.end, doctor.session_time, {
-        dateKey: d.date,
-        bookedTimes: d.booked_times,
-      }),
-    );
+    return dates.filter((d) => hasOpenSlot(d, doctor.session_time));
   }, [dates, doctor]);
 
-  // All schedule days stay tappable so booked slots remain visible
   const availableSet = useMemo(() => new Set(dates.map((d) => d.date)), [dates]);
 
   const selectedOption = useMemo(
@@ -143,9 +169,8 @@ export default function BookDoctorScreen() {
 
   const slotItems = useMemo(() => {
     if (!selectedOption || !doctor) return [] as SlotItem[];
-    return buildSlotItems(
-      selectedOption.start,
-      selectedOption.end,
+    return buildSlotItemsFromWindows(
+      windowsFor(selectedOption),
       doctor.session_time,
       {
         dateKey: selectedOption.date,
@@ -167,18 +192,13 @@ export default function BookDoctorScreen() {
     setMonth(new Date(d.getFullYear(), d.getMonth(), 1));
   }, []);
 
-  const load = useCallback(async () => {
-    if (!doctorUuid) return;
-    setError("");
-    try {
-      const data = await api.doctorAvailability(String(doctorUuid));
+  const loadAvailability = useCallback(
+    async (clinicId: number) => {
+      const data = await api.doctorAvailability(String(doctorUuid), clinicId);
       setDoctor(data.doctor);
       setDates(data.dates);
       const withOpen = data.dates.filter((d) =>
-        hasOpenSlot(d.start, d.end, data.doctor.session_time, {
-          dateKey: d.date,
-          bookedTimes: d.booked_times,
-        }),
+        hasOpenSlot(d, data.doctor.session_time),
       );
       setSelectedDate((prev) => {
         if (prev && data.dates.some((d) => d.date === prev)) return prev;
@@ -190,13 +210,45 @@ export default function BookDoctorScreen() {
         const d = parseDateKey(first);
         setMonth(new Date(d.getFullYear(), d.getMonth(), 1));
       }
+    },
+    [doctorUuid],
+  );
+
+  const load = useCallback(async () => {
+    if (!doctorUuid) return;
+    setError("");
+    try {
+      const clinicsRes = await api.doctorClinics(String(doctorUuid));
+      const list = clinicsRes.clinics.filter((c) => c.has_schedule !== false);
+      const clinicList = list.length ? list : clinicsRes.clinics;
+      setClinics(clinicList);
+
+      let clinicId: number | null = null;
+      if (Number.isFinite(presetClinicId)) {
+        const preset = clinicList.find((c) => c.id === presetClinicId);
+        if (preset) clinicId = preset.id;
+      }
+      if (!clinicId) {
+        const primary = clinicList.find((c) => c.is_primary);
+        clinicId = primary?.id ?? clinicList[0]?.id ?? null;
+      }
+      setSelectedClinicId(clinicId);
+
+      if (!clinicId) {
+        setDoctor(null);
+        setDates([]);
+        setError("This doctor has no clinic schedule yet.");
+        return;
+      }
+
+      await loadAvailability(clinicId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [doctorUuid]);
+  }, [doctorUuid, loadAvailability, presetClinicId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -205,13 +257,32 @@ export default function BookDoctorScreen() {
     }, [load]),
   );
 
+  async function onSelectClinic(id: number) {
+    if (id === selectedClinicId) return;
+    setSelectedClinicId(id);
+    setSelectedDate(null);
+    setSelectedSlot(null);
+    setLoading(true);
+    setError("");
+    try {
+      await loadAvailability(id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function confirm() {
-    if (!doctor || !selectedDate || !visibleSelectedSlot) return;
+    if (!doctor || !selectedDate || !visibleSelectedSlot || !selectedClinicId) {
+      return;
+    }
     setBooking(true);
     setError("");
     try {
       const checkId = symptomCheckId ? Number(symptomCheckId) : undefined;
       const res = await api.book(doctor.uuid, selectedDate, {
+        clinic_id: selectedClinicId,
         slot_time: visibleSelectedSlot,
         ...(Number.isFinite(checkId) ? { symptom_check_id: checkId } : {}),
       });
@@ -228,7 +299,7 @@ export default function BookDoctorScreen() {
     }
   }
 
-  if (loading && !doctor) {
+  if (loading && !doctor && !clinics.length) {
     return (
       <Screen>
         <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />
@@ -236,7 +307,7 @@ export default function BookDoctorScreen() {
     );
   }
 
-  if (!doctor) {
+  if (!doctor && !loading) {
     return (
       <Screen>
         <ScrollView
@@ -254,7 +325,10 @@ export default function BookDoctorScreen() {
             />
           }
         >
-          <Empty title="Doctor not found" />
+          <Empty
+            title="Unavailable"
+            body="Doctor has no clinic schedule yet."
+          />
           <ErrorText>{error}</ErrorText>
         </ScrollView>
       </Screen>
@@ -272,18 +346,70 @@ export default function BookDoctorScreen() {
             colors={[colors.primary]}
             onRefresh={() => {
               setRefreshing(true);
-              load();
+              if (selectedClinicId) {
+                loadAvailability(selectedClinicId).finally(() =>
+                  setRefreshing(false),
+                );
+              } else {
+                load();
+              }
             }}
           />
         }
       >
-        <Title>Dr. {doctor.full_name}</Title>
-        <Subtitle>{doctor.session_time} min sessions</Subtitle>
+        <Title>Dr. {doctor?.full_name}</Title>
+        <Subtitle>
+          {doctor?.session_time ?? "—"} min sessions · Pakistan time (PKT)
+        </Subtitle>
         <ErrorText>{error}</ErrorText>
+
+        {clinics.length > 1 ? (
+          <>
+            <Text style={styles.section}>Clinic</Text>
+            <View style={styles.clinicList}>
+              {clinics.map((c) => {
+                const active = c.id === selectedClinicId;
+                return (
+                  <Pressable
+                    key={c.id}
+                    onPress={() => onSelectClinic(c.id)}
+                    style={[styles.clinicChip, active && styles.clinicChipActive]}
+                  >
+                    <Text
+                      style={[
+                        styles.clinicChipText,
+                        active && styles.clinicChipTextActive,
+                      ]}
+                    >
+                      {c.name}
+                    </Text>
+                    {(c.area || c.city) ? (
+                      <Text
+                        style={[
+                          styles.clinicMeta,
+                          active && styles.clinicChipTextActive,
+                        ]}
+                      >
+                        {[c.area, c.city].filter(Boolean).join(", ")}
+                      </Text>
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+            </View>
+          </>
+        ) : selectedClinic ? (
+          <Text style={styles.clinicOneLine}>
+            Clinic: {selectedClinic.name}
+          </Text>
+        ) : null}
 
         <Text style={styles.section}>Select date</Text>
         {!dates.length ? (
-          <Empty title="No dates available" body="Try again later." />
+          <Empty
+            title="No dates available"
+            body="This clinic has no upcoming schedule days."
+          />
         ) : (
           <MonthCalendar
             availableDates={availableSet}
@@ -340,8 +466,11 @@ export default function BookDoctorScreen() {
                 })}
               </View>
             )}
-            {!openDates.some((d) => d.date === selectedDate) && slotItems.length ? (
-              <Text style={styles.hint}>No open slots left on this day — pick another date.</Text>
+            {!openDates.some((d) => d.date === selectedDate) &&
+            slotItems.length ? (
+              <Text style={styles.hint}>
+                No open slots left on this day — pick another date.
+              </Text>
             ) : null}
           </>
         ) : null}
@@ -351,7 +480,7 @@ export default function BookDoctorScreen() {
           label={booking ? "Booking…" : "Confirm booking"}
           onPress={confirm}
           loading={booking}
-          disabled={!selectedDate || !visibleSelectedSlot}
+          disabled={!selectedDate || !visibleSelectedSlot || !selectedClinicId}
         />
       </ScrollView>
     </Screen>
@@ -368,6 +497,39 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     marginTop: 20,
     marginBottom: 10,
+  },
+  clinicList: { gap: 8 },
+  clinicChip: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  clinicChipActive: {
+    borderColor: colors.primary,
+    backgroundColor: "rgba(15,118,110,0.12)",
+  },
+  clinicChipText: {
+    color: colors.text,
+    fontFamily: fonts.sansBold,
+    fontSize: 15,
+  },
+  clinicChipTextActive: {
+    color: colors.primary,
+  },
+  clinicMeta: {
+    color: colors.muted,
+    fontSize: 12,
+    fontFamily: fonts.sans,
+    marginTop: 2,
+  },
+  clinicOneLine: {
+    marginTop: 12,
+    color: colors.text,
+    fontFamily: fonts.sansSemi,
+    fontSize: 14,
   },
   slotGrid: {
     flexDirection: "row",

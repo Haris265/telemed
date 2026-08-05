@@ -8,6 +8,8 @@ from appointments.views import (
 )
 
 from .doctor_views import (
+    DoctorAppointmentAttachmentDetailView,
+    DoctorAppointmentAttachmentListCreateView,
     DoctorAppointmentDetailView,
     DoctorAppointmentEndVisitView,
     DoctorAppointmentListView,
@@ -127,6 +129,16 @@ doctor_urlpatterns = [
         "appointments/<int:pk>/end/",
         DoctorAppointmentEndVisitView.as_view(),
         name="doctor-appointment-end",
+    ),
+    path(
+        "appointments/<int:pk>/attachments/",
+        DoctorAppointmentAttachmentListCreateView.as_view(),
+        name="doctor-appointment-attachments",
+    ),
+    path(
+        "appointments/<int:pk>/attachments/<int:attachment_id>/",
+        DoctorAppointmentAttachmentDetailView.as_view(),
+        name="doctor-appointment-attachment-detail",
     ),
     path(
         "appointments/<int:pk>/clinical/",

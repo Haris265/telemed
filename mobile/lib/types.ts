@@ -41,8 +41,32 @@ export type DateOption = {
   start: string;
   end: string;
   timing: string;
+  windows?: { start: string; end: string }[];
   booked_count?: number;
   booked_times?: string[];
+  clinic_id?: number | null;
+};
+
+export type DoctorClinicOption = {
+  id: number;
+  name: string;
+  address: string;
+  city: string;
+  area: string;
+  phone: string;
+  is_primary?: boolean;
+  has_schedule?: boolean;
+};
+
+export type VisitAttachment = {
+  id: number;
+  kind: "image" | "voice";
+  url: string;
+  original_name: string;
+  mime_type: string;
+  duration_seconds?: number | null;
+  sent_via_whatsapp?: boolean;
+  created_at: string;
 };
 
 export type Appointment = {
@@ -61,8 +85,10 @@ export type Appointment = {
   rejection_reason?: string;
   created_at: string;
   updated_at?: string;
+  attachment_count?: number;
   clinical_note?: ClinicalNote | null;
   prescription?: Prescription | null;
+  attachments?: VisitAttachment[];
 };
 
 export type AppointmentStatus = "upcoming" | "completed" | "cancelled" | "rejected";

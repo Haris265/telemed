@@ -1,27 +1,152 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
+  Modal,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { Audio } from "expo-av";
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 
 import { Badge, Card, Empty, ErrorText, Screen, Subtitle, Title } from "@/components/ui";
 import { api } from "@/lib/api";
 import { formatDate, formatDateTime, statusLabel, statusTone } from "@/lib/format";
-import type { Appointment } from "@/lib/types";
-import { colors } from "@/constants/theme";
+import { resolveMediaUrl } from "@/lib/mediaUrl";
+import type { Appointment, VisitAttachment } from "@/lib/types";
+import { colors, fonts } from "@/constants/theme";
 
-function NoteBlock({ label, value }: { label: string; value?: string }) {
-  if (!value?.trim()) return null;
+function VoicePlayer({ attachment }: { attachment: VisitAttachment }) {
+  const uri = resolveMediaUrl(attachment.url);
+  const [sound, setSound] = useState<Audio.Sound | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [positionMs, setPositionMs] = useState(0);
+  const [durationMs, setDurationMs] = useState(
+    (attachment.duration_seconds || 0) * 1000,
+  );
+
+  useEffect(() => {
+    return () => {
+      sound?.unloadAsync().catch(() => undefined);
+    };
+  }, [sound]);
+
+  function formatMs(ms: number) {
+    const total = Math.max(0, Math.floor(ms / 1000));
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return `${m}:${String(s).padStart(2, "0")}`;
+  }
+
+  async function toggle() {
+    if (!uri) {
+      setError("Audio file unavailable.");
+      return;
+    }
+    setError("");
+    try {
+      if (playing && sound) {
+        await sound.pauseAsync();
+        setPlaying(false);
+        return;
+      }
+      if (sound) {
+        await sound.playAsync();
+        setPlaying(true);
+        return;
+      }
+      setLoading(true);
+      await Audio.setAudioModeAsync({
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+      });
+      const { sound: created } = await Audio.Sound.createAsync(
+        { uri },
+        { shouldPlay: true },
+        (status) => {
+          if (!status.isLoaded) return;
+          setPositionMs(status.positionMillis || 0);
+          if (status.durationMillis) setDurationMs(status.durationMillis);
+          if (status.didJustFinish) {
+            setPlaying(false);
+            setPositionMs(0);
+          }
+        },
+      );
+      setSound(created);
+      setPlaying(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not play audio");
+      setPlaying(false);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
-    <Text style={styles.noteText}>
-      <Text style={styles.noteLabel}>{label}: </Text>
-      {value}
-    </Text>
+    <View style={styles.voiceCard}>
+      <Pressable onPress={toggle} style={styles.playBtn} disabled={loading}>
+        {loading ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Ionicons name={playing ? "pause" : "play"} size={22} color="#fff" />
+        )}
+      </Pressable>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.mediaTitle}>Voice note</Text>
+        <Text style={styles.meta}>
+          {formatMs(positionMs)} /{" "}
+          {durationMs
+            ? formatMs(durationMs)
+            : attachment.duration_seconds
+              ? formatMs(attachment.duration_seconds * 1000)
+              : "--:--"}
+        </Text>
+        {error ? <Text style={styles.reject}>{error}</Text> : null}
+      </View>
+      <Ionicons name="mic" size={20} color={colors.primary} />
+    </View>
+  );
+}
+
+function ImageAttachment({
+  attachment,
+  onOpen,
+}: {
+  attachment: VisitAttachment;
+  onOpen: (uri: string) => void;
+}) {
+  const uri = resolveMediaUrl(attachment.url);
+  const [failed, setFailed] = useState(false);
+
+  if (!uri || failed) {
+    return (
+      <View style={styles.imageFallback}>
+        <Ionicons name="image-outline" size={28} color={colors.muted} />
+        <Text style={styles.meta}>Could not load image</Text>
+      </View>
+    );
+  }
+
+  return (
+    <Pressable onPress={() => onOpen(uri)} style={{ gap: 6 }}>
+      <Image
+        source={{ uri }}
+        style={styles.image}
+        resizeMode="cover"
+        onError={() => setFailed(true)}
+      />
+      <Text style={styles.meta}>
+        {attachment.original_name || "Image attachment"} · Tap to enlarge
+      </Text>
+    </Pressable>
   );
 }
 
@@ -32,6 +157,7 @@ export default function VisitReportScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [previewUri, setPreviewUri] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!Number.isFinite(visitId)) {
@@ -77,12 +203,9 @@ export default function VisitReportScreen() {
     );
   }
 
-  const hasSoap =
-    visit.clinical_note &&
-    (visit.clinical_note.subjective ||
-      visit.clinical_note.objective ||
-      visit.clinical_note.assessment ||
-      visit.clinical_note.plan);
+  const attachments = visit.attachments || [];
+  const images = attachments.filter((a) => a.kind === "image");
+  const voices = attachments.filter((a) => a.kind === "voice");
 
   return (
     <Screen>
@@ -108,61 +231,79 @@ export default function VisitReportScreen() {
           <Card style={{ gap: 8 }}>
             <View style={styles.row}>
               <Text style={styles.token}>{visit.token_code}</Text>
-              <Badge label={statusLabel(visit.status)} tone={statusTone(visit.status)} />
+              <Badge
+                label={statusLabel(visit.status)}
+                tone={statusTone(visit.status)}
+              />
             </View>
             <Text style={styles.meta}>Date: {formatDate(visit.token_date)}</Text>
-            <Text style={styles.meta}>Time: {formatDateTime(visit.scheduled_at)}</Text>
-            {visit.notes ? <Text style={styles.meta}>Notes: {visit.notes}</Text> : null}
+            <Text style={styles.meta}>
+              Time: {formatDateTime(visit.scheduled_at)}
+            </Text>
+            {visit.notes ? (
+              <Text style={styles.meta}>Notes: {visit.notes}</Text>
+            ) : null}
             {visit.rejection_reason ? (
               <Text style={styles.reject}>Reason: {visit.rejection_reason}</Text>
             ) : null}
           </Card>
 
-          <Card style={{ gap: 8 }}>
-            <Text style={styles.section}>Doctor notes (SOAP)</Text>
-            {hasSoap ? (
-              <View style={{ gap: 6 }}>
-                <NoteBlock label="Subjective" value={visit.clinical_note?.subjective} />
-                <NoteBlock label="Objective" value={visit.clinical_note?.objective} />
-                <NoteBlock label="Assessment" value={visit.clinical_note?.assessment} />
-                <NoteBlock label="Plan" value={visit.clinical_note?.plan} />
-              </View>
+          <Card style={{ gap: 12 }}>
+            <Text style={styles.section}>Attachments from doctor</Text>
+            {!attachments.length ? (
+              <Text style={styles.meta}>
+                No images or voice notes for this visit yet.
+              </Text>
             ) : (
-              <Text style={styles.meta}>No doctor notes for this visit yet.</Text>
-            )}
-          </Card>
-
-          <Card style={{ gap: 8 }}>
-            <Text style={styles.section}>Prescription</Text>
-            {visit.prescription?.items?.length ? (
-              <View style={{ gap: 10 }}>
-                {visit.prescription.notes ? (
-                  <Text style={styles.meta}>{visit.prescription.notes}</Text>
-                ) : null}
-                {visit.prescription.items.map((item, index) => (
-                  <View key={item.id ?? index} style={styles.rxItem}>
-                    <Text style={styles.rxName}>{item.medicine_name}</Text>
-                    {item.dosage ? (
-                      <Text style={styles.meta}>Dosage: {item.dosage}</Text>
-                    ) : null}
-                    {item.frequency ? (
-                      <Text style={styles.meta}>Frequency: {item.frequency}</Text>
-                    ) : null}
-                    {item.duration ? (
-                      <Text style={styles.meta}>Duration: {item.duration}</Text>
-                    ) : null}
-                    {item.instructions ? (
-                      <Text style={styles.meta}>Instructions: {item.instructions}</Text>
-                    ) : null}
+              <>
+                {images.length ? (
+                  <View style={{ gap: 12 }}>
+                    <Text style={styles.subSection}>Images</Text>
+                    {images.map((att) => (
+                      <ImageAttachment
+                        key={att.id}
+                        attachment={att}
+                        onOpen={setPreviewUri}
+                      />
+                    ))}
                   </View>
-                ))}
-              </View>
-            ) : (
-              <Text style={styles.meta}>No prescription for this visit.</Text>
+                ) : null}
+                {voices.length ? (
+                  <View style={{ gap: 10 }}>
+                    <Text style={styles.subSection}>Voice notes</Text>
+                    {voices.map((att) => (
+                      <VoicePlayer key={att.id} attachment={att} />
+                    ))}
+                  </View>
+                ) : null}
+              </>
             )}
           </Card>
         </View>
       </ScrollView>
+
+      <Modal
+        visible={!!previewUri}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPreviewUri(null)}
+      >
+        <View style={styles.previewWrap}>
+          <Pressable
+            style={styles.previewClose}
+            onPress={() => setPreviewUri(null)}
+          >
+            <Ionicons name="close" size={28} color="#fff" />
+          </Pressable>
+          {previewUri ? (
+            <Image
+              source={{ uri: previewUri }}
+              style={styles.previewImage}
+              resizeMode="contain"
+            />
+          ) : null}
+        </View>
+      </Modal>
     </Screen>
   );
 }
@@ -176,42 +317,85 @@ const styles = StyleSheet.create({
   },
   token: {
     color: colors.primary,
-    fontWeight: "800",
+    fontFamily: fonts.sansExtra,
     fontSize: 16,
   },
   section: {
     color: colors.text,
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: fonts.sansBold,
+  },
+  subSection: {
+    color: colors.muted,
+    fontSize: 12,
+    fontFamily: fonts.sansBold,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   meta: {
     color: colors.muted,
     fontSize: 13,
     lineHeight: 18,
+    fontFamily: fonts.sans,
   },
-  noteText: {
+  mediaTitle: {
     color: colors.text,
     fontSize: 14,
-    lineHeight: 20,
+    fontFamily: fonts.sansBold,
   },
-  noteLabel: {
-    fontWeight: "700",
-    color: colors.text,
+  image: {
+    width: "100%",
+    height: 220,
+    borderRadius: 12,
+    backgroundColor: colors.surfaceAlt,
   },
-  rxItem: {
-    gap: 2,
-    paddingTop: 4,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
+  imageFallback: {
+    height: 160,
+    borderRadius: 12,
+    backgroundColor: colors.surfaceAlt,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
   },
-  rxName: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: "700",
+  voiceCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    padding: 12,
+    backgroundColor: colors.surfaceAlt,
+  },
+  playBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
   },
   reject: {
     color: colors.danger,
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: fonts.sansSemi,
+    marginTop: 2,
+  },
+  previewWrap: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.92)",
+    justifyContent: "center",
+    padding: 12,
+  },
+  previewClose: {
+    position: "absolute",
+    top: 48,
+    right: 20,
+    zIndex: 2,
+    padding: 8,
+  },
+  previewImage: {
+    width: "100%",
+    height: "80%",
   },
 });

@@ -399,7 +399,8 @@ export default function ClinicScheduleScreen() {
                 );
               })}
               <Text style={styles.hint}>
-                Off days stay closed. Use 00:00 as end time for midnight.
+                Times are Pakistan (PKT). Off days stay closed. Use 00:00 as end
+                time for midnight.
               </Text>
             </Card>
 

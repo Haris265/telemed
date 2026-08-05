@@ -104,6 +104,17 @@ export type Prescription = {
   updated_at?: string;
 };
 
+export type VisitAttachment = {
+  id: number;
+  kind: "image" | "voice";
+  url: string;
+  original_name: string;
+  mime_type: string;
+  duration_seconds?: number | null;
+  sent_via_whatsapp?: boolean;
+  created_at: string;
+};
+
 export type Appointment = {
   id: number;
   patient: number;
@@ -122,10 +133,12 @@ export type Appointment = {
   visit_started_at?: string | null;
   visit_ended_at?: string | null;
   visit_duration_seconds?: number | null;
+  attachment_count?: number;
   created_at: string;
   updated_at: string;
   clinical_note?: ClinicalNote | null;
   prescription?: Prescription | null;
+  attachments?: VisitAttachment[];
 };
 
 export type DashboardStats = {

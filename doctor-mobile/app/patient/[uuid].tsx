@@ -175,48 +175,23 @@ export default function PatientDetailScreen() {
                 <Text style={styles.meta}>
                   {formatDate(patient.last_visit_date)}
                 </Text>
-                {patient.last_clinical_note ? (
-                  <View style={{ gap: 4 }}>
-                    <Text style={styles.subSection}>SOAP Notes</Text>
-                    {patient.last_clinical_note.subjective ? (
-                      <Text style={styles.noteText}>
-                        S: {patient.last_clinical_note.subjective}
-                      </Text>
-                    ) : null}
-                    {patient.last_clinical_note.objective ? (
-                      <Text style={styles.noteText}>
-                        O: {patient.last_clinical_note.objective}
-                      </Text>
-                    ) : null}
-                    {patient.last_clinical_note.assessment ? (
-                      <Text style={styles.noteText}>
-                        A: {patient.last_clinical_note.assessment}
-                      </Text>
-                    ) : null}
-                    {patient.last_clinical_note.plan ? (
-                      <Text style={styles.noteText}>
-                        P: {patient.last_clinical_note.plan}
-                      </Text>
-                    ) : null}
-                  </View>
-                ) : (
-                  <Text style={styles.meta}>No SOAP notes on last visit.</Text>
-                )}
-                {patient.last_prescription?.items?.length ? (
-                  <View style={{ gap: 4 }}>
-                    <Text style={styles.subSection}>Prescription</Text>
-                    {patient.last_prescription.items.map((item, i) => (
-                      <Text key={i} style={styles.noteText}>
-                        • {item.medicine_name}
-                        {item.dosage ? ` ${item.dosage}` : ""}
-                        {item.frequency ? ` — ${item.frequency}` : ""}
-                        {item.duration ? ` for ${item.duration}` : ""}
-                      </Text>
-                    ))}
-                  </View>
-                ) : (
-                  <Text style={styles.meta}>No prescription on last visit.</Text>
-                )}
+                {(() => {
+                  const last = patient.visit_history.find(
+                    (v) => v.status === "completed",
+                  );
+                  const media = last?.attachments || [];
+                  if (!media.length) {
+                    return (
+                      <Text style={styles.meta}>No media on last visit.</Text>
+                    );
+                  }
+                  return (
+                    <Text style={styles.meta}>
+                      {media.length} attachment
+                      {media.length === 1 ? "" : "s"} (image / voice)
+                    </Text>
+                  );
+                })()}
               </Card>
             ) : null}
 
@@ -262,44 +237,21 @@ export default function PatientDetailScreen() {
                     </Text>
                     {expanded ? (
                       <View style={{ gap: 6, marginTop: 8 }}>
-                        {visit.clinical_note ? (
+                        {visit.attachments?.length ? (
                           <View>
-                            <Text style={styles.subSection}>SOAP</Text>
-                            {visit.clinical_note.subjective ? (
-                              <Text style={styles.noteText}>
-                                S: {visit.clinical_note.subjective}
-                              </Text>
-                            ) : null}
-                            {visit.clinical_note.objective ? (
-                              <Text style={styles.noteText}>
-                                O: {visit.clinical_note.objective}
-                              </Text>
-                            ) : null}
-                            {visit.clinical_note.assessment ? (
-                              <Text style={styles.noteText}>
-                                A: {visit.clinical_note.assessment}
-                              </Text>
-                            ) : null}
-                            {visit.clinical_note.plan ? (
-                              <Text style={styles.noteText}>
-                                P: {visit.clinical_note.plan}
-                              </Text>
-                            ) : null}
-                          </View>
-                        ) : (
-                          <Text style={styles.meta}>No SOAP notes.</Text>
-                        )}
-                        {visit.prescription?.items?.length ? (
-                          <View>
-                            <Text style={styles.subSection}>Prescription</Text>
-                            {visit.prescription.items.map((item, i) => (
-                              <Text key={i} style={styles.noteText}>
-                                • {item.medicine_name}
-                                {item.dosage ? ` ${item.dosage}` : ""}
+                            <Text style={styles.subSection}>Media</Text>
+                            {visit.attachments.map((att) => (
+                              <Text key={att.id} style={styles.noteText}>
+                                • {att.kind === "image" ? "Image" : "Voice note"}
+                                {att.duration_seconds
+                                  ? ` (${att.duration_seconds}s)`
+                                  : ""}
                               </Text>
                             ))}
                           </View>
-                        ) : null}
+                        ) : (
+                          <Text style={styles.meta}>No media attached.</Text>
+                        )}
                         {visit.rejection_reason ? (
                           <Text style={styles.rejectReason}>
                             Rejection: {visit.rejection_reason}

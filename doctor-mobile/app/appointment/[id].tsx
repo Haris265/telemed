@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
+  Image,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -8,20 +10,17 @@ import {
   Text,
   View,
 } from "react-native";
+import { Audio } from "expo-av";
+import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 
 import { ClinicBackdrop } from "@/components/ClinicBackdrop";
 import { LoadingState } from "@/components/LoadingState";
-import {
-  Badge,
-  Button,
-  Card,
-  ErrorText,
-  Input,
-  TextArea,
-} from "@/components/ui";
+import { Badge, Button, Card, ErrorText, TextArea } from "@/components/ui";
 import { api } from "@/lib/api";
-import type { Appointment, ClinicalNote, PrescriptionItem } from "@/lib/types";
+import type { Appointment, VisitAttachment } from "@/lib/types";
+import { resolveMediaUrl } from "@/lib/mediaUrl";
 import {
   formatDate,
   formatDateTime,
@@ -33,20 +32,145 @@ import {
 import { useScreenData } from "@/lib/useScreenData";
 import { useTheme } from "@/lib/theme";
 
-const emptyNote = (): ClinicalNote => ({
-  subjective: "",
-  objective: "",
-  assessment: "",
-  plan: "",
-});
+function formatAudioMs(ms: number) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
 
-const emptyItem = (): PrescriptionItem => ({
-  medicine_name: "",
-  dosage: "",
-  frequency: "",
-  duration: "",
-  instructions: "",
-});
+function VoiceNotePlayer({
+  attachment,
+  colors,
+  fonts,
+}: {
+  attachment: VisitAttachment;
+  colors: { primary: string; text: string; muted: string; danger: string };
+  fonts: { sansBold: string; sans: string };
+}) {
+  const uri = resolveMediaUrl(attachment.url);
+  const [sound, setSound] = useState<Audio.Sound | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [positionMs, setPositionMs] = useState(0);
+  const [durationMs, setDurationMs] = useState(
+    (attachment.duration_seconds || 0) * 1000,
+  );
+
+  useEffect(() => {
+    return () => {
+      sound?.unloadAsync().catch(() => undefined);
+    };
+  }, [sound]);
+
+  async function toggle() {
+    if (!uri) {
+      setError("Audio unavailable.");
+      return;
+    }
+    setError("");
+    try {
+      if (playing && sound) {
+        await sound.pauseAsync();
+        setPlaying(false);
+        return;
+      }
+      if (sound) {
+        await sound.playAsync();
+        setPlaying(true);
+        return;
+      }
+      setLoading(true);
+      // Stop recording mode so playback works reliably.
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+      });
+      const { sound: created } = await Audio.Sound.createAsync(
+        { uri },
+        { shouldPlay: true },
+        (status) => {
+          if (!status.isLoaded) return;
+          setPositionMs(status.positionMillis || 0);
+          if (status.durationMillis) setDurationMs(status.durationMillis);
+          if (status.didJustFinish) {
+            setPlaying(false);
+            setPositionMs(0);
+          }
+        },
+      );
+      setSound(created);
+      setPlaying(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not play");
+      setPlaying(false);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <View style={{ flex: 1, gap: 2 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+        <Pressable
+          onPress={toggle}
+          disabled={loading}
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: 22,
+            backgroundColor: colors.primary,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Ionicons name={playing ? "pause" : "play"} size={20} color="#fff" />
+          )}
+        </Pressable>
+        <View style={{ flex: 1 }}>
+          <Text
+            style={{
+              color: colors.text,
+              fontFamily: fonts.sansBold,
+              fontSize: 14,
+            }}
+          >
+            Voice note
+          </Text>
+          <Text
+            style={{
+              color: colors.muted,
+              fontFamily: fonts.sans,
+              fontSize: 12,
+            }}
+          >
+            {formatAudioMs(positionMs)} /{" "}
+            {durationMs
+              ? formatAudioMs(durationMs)
+              : attachment.duration_seconds
+                ? formatAudioMs(attachment.duration_seconds * 1000)
+                : "--:--"}
+          </Text>
+          {error ? (
+            <Text
+              style={{
+                color: colors.danger,
+                fontSize: 12,
+                fontFamily: fonts.sans,
+              }}
+            >
+              {error}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+    </View>
+  );
+}
 
 export default function AppointmentDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -55,12 +179,14 @@ export default function AppointmentDetailScreen() {
   const { colors, fonts } = useTheme();
 
   const [appointment, setAppointment] = useState<Appointment | null>(null);
-  const [note, setNote] = useState<ClinicalNote>(emptyNote());
-  const [rxNotes, setRxNotes] = useState("");
-  const [items, setItems] = useState<PrescriptionItem[]>([emptyItem()]);
+  const [attachments, setAttachments] = useState<VisitAttachment[]>([]);
   const [rejectionReason, setRejectionReason] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
   const [timingLoading, setTimingLoading] = useState(false);
+  const [uploadLoading, setUploadLoading] = useState(false);
+  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const [recordingMs, setRecordingMs] = useState(0);
+  const recordTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const [nowTick, setNowTick] = useState(() => Date.now());
 
   const styles = useMemo(
@@ -100,14 +226,13 @@ export default function AppointmentDetailScreen() {
           fontFamily: fonts.sansBold,
           marginTop: 8,
         },
-        itemTitle: {
-          color: colors.text,
-          fontFamily: fonts.sansBold,
+        hint: {
+          color: colors.muted,
+          fontSize: 13,
+          fontFamily: fonts.sans,
+          lineHeight: 18,
         },
-        actions: {
-          gap: 10,
-          marginTop: 8,
-        },
+        actions: { gap: 10, marginTop: 8 },
         timingLabel: {
           color: colors.muted,
           fontSize: 12,
@@ -127,11 +252,32 @@ export default function AppointmentDetailScreen() {
           fontFamily: fonts.sansExtra,
           letterSpacing: -0.5,
         },
-        timingHint: {
+        mediaRow: {
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 12,
+        },
+        thumb: {
+          width: 64,
+          height: 64,
+          borderRadius: 10,
+          backgroundColor: colors.surfaceAlt,
+        },
+        mediaTitle: {
+          color: colors.text,
+          fontFamily: fonts.sansSemi,
+          fontSize: 14,
+          flex: 1,
+        },
+        mediaMeta: {
           color: colors.muted,
-          fontSize: 13,
+          fontSize: 12,
           fontFamily: fonts.sans,
-          lineHeight: 18,
+        },
+        recordBadge: {
+          color: colors.danger,
+          fontFamily: fonts.sansBold,
+          fontSize: 14,
         },
       }),
     [colors, fonts],
@@ -141,13 +287,7 @@ export default function AppointmentDetailScreen() {
     if (!appointmentId) return;
     const data = await api.appointment(appointmentId);
     setAppointment(data);
-    setNote(data.clinical_note || emptyNote());
-    setRxNotes(data.prescription?.notes || "");
-    setItems(
-      data.prescription?.items?.length
-        ? data.prescription.items
-        : [emptyItem()],
-    );
+    setAttachments(data.attachments || []);
     setRejectionReason(data.rejection_reason || "");
   }, [appointmentId]);
 
@@ -163,6 +303,13 @@ export default function AppointmentDetailScreen() {
     return () => clearInterval(timer);
   }, [visitInProgress]);
 
+  useEffect(() => {
+    return () => {
+      if (recordTimer.current) clearInterval(recordTimer.current);
+      recording?.stopAndUnloadAsync().catch(() => undefined);
+    };
+  }, [recording]);
+
   const liveDurationSeconds = useMemo(() => {
     if (!appointment?.visit_started_at) return null;
     const start = new Date(appointment.visit_started_at).getTime();
@@ -172,20 +319,13 @@ export default function AppointmentDetailScreen() {
     return Math.max(0, Math.floor((end - start) / 1000));
   }, [appointment?.visit_started_at, appointment?.visit_ended_at, nowTick]);
 
-  async function saveClinical() {
-    await api.saveClinicalNote(appointmentId, note);
-    await api.savePrescription(appointmentId, {
-      notes: rxNotes,
-      items: items.filter((i) => i.medicine_name.trim()),
-    });
-  }
-
   async function onStartVisit() {
     setTimingLoading(true);
     setError("");
     try {
       const updated = await api.startVisit(appointmentId);
       setAppointment(updated);
+      setAttachments(updated.attachments || []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to start visit");
     } finally {
@@ -199,6 +339,7 @@ export default function AppointmentDetailScreen() {
     try {
       const updated = await api.endVisit(appointmentId);
       setAppointment(updated);
+      setAttachments(updated.attachments || []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to end visit");
     } finally {
@@ -210,12 +351,12 @@ export default function AppointmentDetailScreen() {
     setActionLoading(true);
     setError("");
     try {
-      await saveClinical();
       const updated = await api.updateAppointmentStatus(appointmentId, {
         status: "completed",
       });
       setAppointment(updated);
-      Alert.alert("Done", "Visit marked as completed.");
+      setAttachments(updated.attachments || []);
+      Alert.alert("Done", "Visit completed. Media sent to the patient.");
       router.back();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to complete visit");
@@ -237,7 +378,6 @@ export default function AppointmentDetailScreen() {
             setActionLoading(true);
             setError("");
             try {
-              await saveClinical();
               const updated = await api.updateAppointmentStatus(appointmentId, {
                 status: "rejected",
                 rejection_reason: rejectionReason,
@@ -258,15 +398,125 @@ export default function AppointmentDetailScreen() {
     );
   }
 
-  function updateItem(index: number, field: keyof PrescriptionItem, value: string) {
-    setItems((prev) =>
-      prev.map((item, i) => (i === index ? { ...item, [field]: value } : item)),
-    );
+  async function pickImage(fromCamera: boolean) {
+    setError("");
+    const perm = fromCamera
+      ? await ImagePicker.requestCameraPermissionsAsync()
+      : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      setError("Camera / gallery permission is required.");
+      return;
+    }
+    const result = fromCamera
+      ? await ImagePicker.launchCameraAsync({
+          mediaTypes: ["images"],
+          quality: 0.75,
+        })
+      : await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ["images"],
+          quality: 0.75,
+        });
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    setUploadLoading(true);
+    try {
+      const att = await api.uploadAttachment(appointmentId, {
+        kind: "image",
+        uri: asset.uri,
+        name: asset.fileName || "photo.jpg",
+        mimeType: asset.mimeType || "image/jpeg",
+      });
+      setAttachments((prev) => [...prev, att]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Image upload failed");
+    } finally {
+      setUploadLoading(false);
+    }
+  }
+
+  async function startRecording() {
+    setError("");
+    try {
+      const perm = await Audio.requestPermissionsAsync();
+      if (!perm.granted) {
+        setError("Microphone permission is required.");
+        return;
+      }
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+      const rec = new Audio.Recording();
+      await rec.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      await rec.startAsync();
+      setRecording(rec);
+      setRecordingMs(0);
+      recordTimer.current = setInterval(() => {
+        setRecordingMs((ms) => ms + 1000);
+      }, 1000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not start recording");
+    }
+  }
+
+  async function stopRecordingAndUpload() {
+    if (!recording) return;
+    setUploadLoading(true);
+    setError("");
+    try {
+      if (recordTimer.current) {
+        clearInterval(recordTimer.current);
+        recordTimer.current = null;
+      }
+      await recording.stopAndUnloadAsync();
+      const uri = recording.getURI();
+      const status = await recording.getStatusAsync();
+      const durationSec =
+        status.isLoaded && status.durationMillis
+          ? Math.round(status.durationMillis / 1000)
+          : Math.round(recordingMs / 1000);
+      setRecording(null);
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+      if (!uri) throw new Error("No recording file created.");
+      const att = await api.uploadAttachment(appointmentId, {
+        kind: "voice",
+        uri,
+        name: "voice.m4a",
+        mimeType: "audio/m4a",
+        durationSeconds: durationSec,
+      });
+      setAttachments((prev) => [...prev, att]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Voice upload failed");
+      setRecording(null);
+    } finally {
+      setUploadLoading(false);
+      setRecordingMs(0);
+    }
+  }
+
+  function onDeleteAttachment(att: VisitAttachment) {
+    Alert.alert("Delete attachment", `Remove this ${att.kind}?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await api.deleteAttachment(appointmentId, att.id);
+            setAttachments((prev) => prev.filter((a) => a.id !== att.id));
+          } catch (e) {
+            setError(e instanceof Error ? e.message : "Delete failed");
+          }
+        },
+      },
+    ]);
   }
 
   const isEditable = appointment?.status === "upcoming";
   const canStart = isEditable && !appointment?.visit_started_at;
   const canEnd = isEditable && visitInProgress;
+  const canAttach = appointment?.status === "upcoming" || appointment?.status === "completed";
 
   return (
     <View style={styles.root}>
@@ -317,7 +567,7 @@ export default function AppointmentDetailScreen() {
             {appointment ? (
               <Card style={{ gap: 12 }}>
                 <Text style={[styles.section, { marginTop: 0 }]}>Visit timing</Text>
-                <Text style={styles.timingHint}>
+                <Text style={styles.hint}>
                   Tap Start when you begin seeing the patient, then End when the
                   consultation finishes.
                 </Text>
@@ -374,102 +624,89 @@ export default function AppointmentDetailScreen() {
               </Card>
             ) : null}
 
-            <Text style={styles.section}>SOAP Notes</Text>
-            <TextArea
-              label="Subjective"
-              value={note.subjective}
-              onChangeText={(v) => setNote((n) => ({ ...n, subjective: v }))}
-              editable={isEditable}
-              placeholder="Patient complaints, symptoms..."
-            />
-            <TextArea
-              label="Objective"
-              value={note.objective}
-              onChangeText={(v) => setNote((n) => ({ ...n, objective: v }))}
-              editable={isEditable}
-              placeholder="Exam findings, vitals..."
-            />
-            <TextArea
-              label="Assessment"
-              value={note.assessment}
-              onChangeText={(v) => setNote((n) => ({ ...n, assessment: v }))}
-              editable={isEditable}
-              placeholder="Diagnosis, clinical impression..."
-            />
-            <TextArea
-              label="Plan"
-              value={note.plan}
-              onChangeText={(v) => setNote((n) => ({ ...n, plan: v }))}
-              editable={isEditable}
-              placeholder="Treatment plan, follow-up..."
-            />
+            <Text style={styles.section}>Patient media</Text>
+            <Text style={styles.hint}>
+              Attach an image or voice note for this patient. They will see it
+              in the app and receive it on WhatsApp when you complete the visit.
+            </Text>
 
-            <Text style={styles.section}>Prescription</Text>
-            <TextArea
-              label="General instructions"
-              value={rxNotes}
-              onChangeText={setRxNotes}
-              editable={isEditable}
-              placeholder="Diet, rest, follow-up..."
-            />
-
-            {items.map((item, index) => (
-              <Card key={index} style={{ gap: 10 }}>
-                <Text style={styles.itemTitle}>Medicine {index + 1}</Text>
-                <Input
-                  label="Medicine name"
-                  value={item.medicine_name}
-                  onChangeText={(v) => updateItem(index, "medicine_name", v)}
-                  editable={isEditable}
-                  placeholder="e.g. Paracetamol"
+            {canAttach ? (
+              <View style={styles.actions}>
+                <Button
+                  label="Take photo"
+                  variant="secondary"
+                  loading={uploadLoading}
+                  onPress={() => pickImage(true)}
                 />
-                <Input
-                  label="Dosage"
-                  value={item.dosage}
-                  onChangeText={(v) => updateItem(index, "dosage", v)}
-                  editable={isEditable}
-                  placeholder="e.g. 500mg"
+                <Button
+                  label="Choose image"
+                  variant="secondary"
+                  loading={uploadLoading}
+                  onPress={() => pickImage(false)}
                 />
-                <Input
-                  label="Frequency"
-                  value={item.frequency}
-                  onChangeText={(v) => updateItem(index, "frequency", v)}
-                  editable={isEditable}
-                  placeholder="e.g. twice daily"
-                />
-                <Input
-                  label="Duration"
-                  value={item.duration}
-                  onChangeText={(v) => updateItem(index, "duration", v)}
-                  editable={isEditable}
-                  placeholder="e.g. 7 days"
-                />
-                <Input
-                  label="Instructions"
-                  value={item.instructions}
-                  onChangeText={(v) => updateItem(index, "instructions", v)}
-                  editable={isEditable}
-                  placeholder="After meals, etc."
-                />
-                {isEditable && items.length > 1 ? (
+                {recording ? (
                   <Button
-                    label="Remove medicine"
-                    variant="secondary"
-                    onPress={() =>
-                      setItems((prev) => prev.filter((_, i) => i !== index))
-                    }
+                    label={`Stop & upload (${Math.floor(recordingMs / 1000)}s)`}
+                    loading={uploadLoading}
+                    onPress={stopRecordingAndUpload}
                   />
+                ) : (
+                  <Button
+                    label="Record voice note"
+                    variant="secondary"
+                    loading={uploadLoading}
+                    onPress={startRecording}
+                  />
+                )}
+                {recording ? (
+                  <Text style={styles.recordBadge}>Recording…</Text>
                 ) : null}
-              </Card>
-            ))}
-
-            {isEditable ? (
-              <Button
-                label="Add medicine"
-                variant="secondary"
-                onPress={() => setItems((prev) => [...prev, emptyItem()])}
-              />
+              </View>
             ) : null}
+
+            {attachments.length ? (
+              <View style={{ gap: 10 }}>
+                {attachments.map((att) => (
+                  <Card key={att.id}>
+                    <View style={styles.mediaRow}>
+                      {att.kind === "image" ? (
+                        <>
+                          <Image
+                            source={{ uri: resolveMediaUrl(att.url) }}
+                            style={styles.thumb}
+                          />
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.mediaTitle}>Image</Text>
+                            <Text style={styles.mediaMeta}>
+                              {att.original_name || att.mime_type}
+                            </Text>
+                          </View>
+                        </>
+                      ) : (
+                        <VoiceNotePlayer
+                          attachment={att}
+                          colors={colors}
+                          fonts={fonts}
+                        />
+                      )}
+                      {canAttach ? (
+                        <Pressable onPress={() => onDeleteAttachment(att)}>
+                          <Ionicons
+                            name="trash-outline"
+                            size={20}
+                            color={colors.danger}
+                          />
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  </Card>
+                ))}
+              </View>
+            ) : (
+              <Card>
+                <Text style={styles.hint}>No media attached yet.</Text>
+              </Card>
+            )}
 
             {isEditable ? (
               <>

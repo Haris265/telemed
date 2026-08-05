@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -9,12 +10,69 @@ import {
   View,
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 
 import { Badge, Card, Empty, ErrorText, Screen, Subtitle, Title } from "@/components/ui";
 import { api } from "@/lib/api";
 import { formatDate, statusLabel, statusTone } from "@/lib/format";
+import { resolveMediaUrl } from "@/lib/mediaUrl";
 import { useTheme } from "@/lib/theme";
-import type { PatientHistory } from "@/lib/types";
+import type { PatientHistory, VisitAttachment } from "@/lib/types";
+import { colors as themeColors, fonts as themeFonts } from "@/constants/theme";
+
+function MediaHint({ attachments }: { attachments?: VisitAttachment[] }) {
+  const list = attachments || [];
+  if (!list.length) {
+    return <Text style={hintStyles.meta}>Tap to view details</Text>;
+  }
+  const firstImage = list.find((a) => a.kind === "image");
+  const voiceCount = list.filter((a) => a.kind === "voice").length;
+  const imageCount = list.filter((a) => a.kind === "image").length;
+  const uri = firstImage ? resolveMediaUrl(firstImage.url) : "";
+
+  return (
+    <View style={hintStyles.row}>
+      {uri ? (
+        <Image source={{ uri }} style={hintStyles.thumb} />
+      ) : (
+        <View style={[hintStyles.thumb, hintStyles.thumbIcon]}>
+          <Ionicons name="mic" size={18} color={themeColors.primary} />
+        </View>
+      )}
+      <Text style={hintStyles.text}>
+        {[
+          imageCount ? `${imageCount} photo${imageCount === 1 ? "" : "s"}` : "",
+          voiceCount ? `${voiceCount} voice` : "",
+        ]
+          .filter(Boolean)
+          .join(" · ")}{" "}
+        · Open
+      </Text>
+    </View>
+  );
+}
+
+const hintStyles = StyleSheet.create({
+  row: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 2 },
+  thumb: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: themeColors.surfaceAlt,
+  },
+  thumbIcon: { alignItems: "center", justifyContent: "center" },
+  text: {
+    flex: 1,
+    color: themeColors.primary,
+    fontSize: 13,
+    fontFamily: themeFonts.sansSemi,
+  },
+  meta: {
+    color: themeColors.muted,
+    fontSize: 13,
+    fontFamily: themeFonts.sans,
+  },
+});
 
 export default function ReportsScreen() {
   const router = useRouter();
@@ -123,7 +181,7 @@ export default function ReportsScreen() {
       >
         <Title>My reports</Title>
         <Subtitle>
-          Past visits, doctors you consulted, prescriptions and reports.
+          Past visits, doctors you consulted, and visit media.
         </Subtitle>
         <ErrorText>{error}</ErrorText>
 
@@ -203,11 +261,7 @@ export default function ReportsScreen() {
                       <Text style={styles.meta}>
                         {formatDate(visit.token_date)} · {formatDate(visit.scheduled_at)}
                       </Text>
-                      {visit.clinical_note || visit.prescription?.items?.length ? (
-                        <Text style={styles.reportHint}>Report available →</Text>
-                      ) : (
-                        <Text style={styles.meta}>Tap to view details</Text>
-                      )}
+                      <MediaHint attachments={visit.attachments} />
                     </Card>
                   </Pressable>
                 ))

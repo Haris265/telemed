@@ -2,7 +2,9 @@ import { storage } from "./storage";
 import type {
   ClinicDetail,
   ClinicInfo,
+  DateOption,
   Doctor,
+  DoctorClinicOption,
   NearbyClinicsResponse,
   Patient,
   PatientHistory,
@@ -118,9 +120,11 @@ export const api = {
     const qs = speciality ? `?speciality=${speciality}` : "";
     return request<Doctor[]>(`/api/patient/doctors/${qs}`);
   },
-  doctorAvailability: (uuid: string) =>
-    request<{
+  doctorAvailability: (uuid: string, clinicId?: number) => {
+    const qs = clinicId ? `?clinic=${clinicId}` : "";
+    return request<{
       doctor: Doctor;
+      clinic_id: number | null;
       weekly: {
         id: number;
         weekday: number;
@@ -129,16 +133,13 @@ export const api = {
         end_time: string;
         is_active: boolean;
       }[];
-      dates: {
-        date: string;
-        label: string;
-        start: string;
-        end: string;
-        timing: string;
-        booked_count?: number;
-        booked_times?: string[];
-      }[];
-    }>(`/api/patient/doctors/${uuid}/availability/`),
+      dates: DateOption[];
+    }>(`/api/patient/doctors/${uuid}/availability/${qs}`);
+  },
+  doctorClinics: (uuid: string) =>
+    request<{ doctor_uuid: string; clinics: DoctorClinicOption[] }>(
+      `/api/patient/doctors/${uuid}/clinics/`,
+    ),
   appointments: (status?: string) => {
     const qs = status ? `?status=${status}` : "";
     return request<Appointment[]>(`/api/patient/appointments/${qs}`);
@@ -149,7 +150,12 @@ export const api = {
   book: (
     doctor_uuid: string,
     token_date: string,
-    options?: { symptoms?: string; symptom_check_id?: number; slot_time?: string },
+    options: {
+      clinic_id: number;
+      symptoms?: string;
+      symptom_check_id?: number;
+      slot_time: string;
+    },
   ) =>
     request<{ appointment: Appointment; queue: QueueInfo }>(
       "/api/patient/appointments/",
@@ -158,9 +164,10 @@ export const api = {
         body: JSON.stringify({
           doctor_uuid,
           token_date,
-          ...(options?.slot_time ? { slot_time: options.slot_time } : {}),
-          ...(options?.symptoms ? { symptoms: options.symptoms } : {}),
-          ...(options?.symptom_check_id
+          clinic_id: options.clinic_id,
+          slot_time: options.slot_time,
+          ...(options.symptoms ? { symptoms: options.symptoms } : {}),
+          ...(options.symptom_check_id
             ? { symptom_check_id: options.symptom_check_id }
             : {}),
         }),

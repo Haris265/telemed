@@ -9,6 +9,7 @@ from .views import (
     PatientAppointmentQueueView,
     PatientClinicDetailView,
     PatientDoctorAvailabilityView,
+    PatientDoctorClinicsView,
     PatientDoctorListView,
     PatientHistoryView,
     PatientSpecialityListView,
@@ -29,6 +30,11 @@ urlpatterns = [
         "doctors/<uuid:uuid>/availability/",
         PatientDoctorAvailabilityView.as_view(),
         name="patient-doctor-availability",
+    ),
+    path(
+        "doctors/<uuid:uuid>/clinics/",
+        PatientDoctorClinicsView.as_view(),
+        name="patient-doctor-clinics",
     ),
     path(
         "appointments/",

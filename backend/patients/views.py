@@ -23,8 +23,12 @@ from appointments.services import (
     queue_info,
     upcoming_available_dates,
 )
-from catalog.models import Clinic, DoctorAvailability, DoctorProfile, Speciality
-from catalog.serializers import DoctorAvailabilitySerializer, SpecialitySerializer
+from catalog.models import Clinic, DoctorAvailability, DoctorClinic, DoctorProfile, Speciality
+from catalog.serializers import (
+    ClinicSerializer,
+    DoctorAvailabilitySerializer,
+    SpecialitySerializer,
+)
 from catalog.services.geo import haversine_km
 from whatsapp.meta_client import MetaWhatsAppClient
 
@@ -167,17 +171,70 @@ class PatientDoctorAvailabilityView(APIView):
         doctor = DoctorProfile.objects.filter(uuid=uuid, is_active=True).first()
         if not doctor:
             return Response({"detail": "Doctor not found."}, status=404)
-        weekly = DoctorAvailability.objects.filter(
-            doctor=doctor, is_active=True
-        ).order_by("weekday", "start_time")
-        dates = upcoming_available_dates(doctor)
+
+        clinic_param = request.query_params.get("clinic")
+        clinic = None
+        if clinic_param:
+            try:
+                clinic_id = int(clinic_param)
+            except (TypeError, ValueError):
+                return Response({"detail": "Invalid clinic id."}, status=400)
+            clinic = Clinic.objects.filter(pk=clinic_id, is_active=True).first()
+            if not clinic:
+                return Response({"detail": "Clinic not found."}, status=404)
+            if not DoctorClinic.objects.filter(doctor=doctor, clinic=clinic).exists():
+                return Response(
+                    {"detail": "Doctor is not linked to this clinic."},
+                    status=400,
+                )
+
+        weekly_qs = DoctorAvailability.objects.filter(
+            doctor=doctor, is_active=True, clinic__isnull=False
+        )
+        if clinic is not None:
+            weekly_qs = weekly_qs.filter(clinic=clinic)
+        weekly = weekly_qs.order_by("weekday", "start_time")
+        dates = upcoming_available_dates(doctor, clinic=clinic)
         return Response(
             {
                 "doctor": PatientDoctorSerializer(doctor).data,
+                "clinic_id": clinic.id if clinic else None,
                 "weekly": DoctorAvailabilitySerializer(weekly, many=True).data,
                 "dates": dates,
             }
         )
+
+
+class PatientDoctorClinicsView(APIView):
+    permission_classes = [IsAuthenticated, IsPatient]
+
+    def get(self, request, uuid):
+        doctor = DoctorProfile.objects.filter(uuid=uuid, is_active=True).first()
+        if not doctor:
+            return Response({"detail": "Doctor not found."}, status=404)
+        # Mirror legacy single-clinic FK into DoctorClinic.
+        if doctor.clinic_id and not DoctorClinic.objects.filter(
+            doctor=doctor, clinic_id=doctor.clinic_id
+        ).exists():
+            DoctorClinic.objects.get_or_create(
+                doctor=doctor,
+                clinic_id=doctor.clinic_id,
+                defaults={"is_primary": True},
+            )
+        links = (
+            DoctorClinic.objects.filter(doctor=doctor, clinic__is_active=True)
+            .select_related("clinic")
+            .order_by("-is_primary", "clinic__name")
+        )
+        results = []
+        for link in links:
+            data = ClinicSerializer(link.clinic).data
+            data["is_primary"] = link.is_primary
+            data["has_schedule"] = DoctorAvailability.objects.filter(
+                doctor=doctor, clinic=link.clinic, is_active=True
+            ).exists()
+            results.append(data)
+        return Response({"doctor_uuid": str(doctor.uuid), "clinics": results})
 
 
 class PatientAppointmentListCreateView(APIView):
@@ -189,7 +246,7 @@ class PatientAppointmentListCreateView(APIView):
             return Response({"detail": "Patient profile not found."}, status=404)
         qs = (
             Appointment.objects.filter(patient=patient)
-            .select_related("doctor")
+            .select_related("doctor", "clinic")
             .order_by("-token_date", "token_number", "-created_at")
         )
         status_filter = request.query_params.get("status")
@@ -205,6 +262,7 @@ class PatientAppointmentListCreateView(APIView):
         ser = PatientBookSerializer(data=request.data, context={"request": request})
         ser.is_valid(raise_exception=True)
         doctor = ser.validated_data["doctor"]
+        clinic = ser.validated_data["clinic"]
         token_date = ser.validated_data["token_date"]
         start_raw = ser.validated_data["start"]
         parts = [int(x) for x in start_raw.split(":")[:3]]
@@ -229,6 +287,7 @@ class PatientAppointmentListCreateView(APIView):
                 token_date,
                 start_time,
                 slot_time=ser.validated_data.get("slot_time"),
+                clinic=clinic,
                 notes=notes,
             )
         except ValueError as exc:
@@ -254,14 +313,20 @@ class PatientAppointmentDetailView(APIView):
         appt = (
             Appointment.objects.filter(pk=pk, patient=patient)
             .select_related("patient", "doctor")
-            .prefetch_related("prescription__items", "doctor__specialities")
+            .prefetch_related(
+                "prescription__items",
+                "doctor__specialities",
+                "attachments",
+            )
             .select_related("clinical_note")
             .first()
         )
         if not appt:
             return Response({"detail": "Appointment not found."}, status=404)
 
-        return Response(AppointmentDetailSerializer(appt).data)
+        return Response(
+            AppointmentDetailSerializer(appt, context={"request": request}).data
+        )
 
 
 class PatientHistoryView(APIView):
@@ -275,7 +340,11 @@ class PatientHistoryView(APIView):
         appointments = (
             Appointment.objects.filter(patient=patient)
             .select_related("patient", "doctor")
-            .prefetch_related("prescription__items", "doctor__specialities")
+            .prefetch_related(
+                "prescription__items",
+                "doctor__specialities",
+                "attachments",
+            )
             .select_related("clinical_note")
             .order_by("-token_date", "-token_number", "-created_at")
         )
@@ -333,7 +402,9 @@ class PatientHistoryView(APIView):
                     else None
                 ),
                 "doctors_seen": doctors_seen,
-                "visit_history": AppointmentDetailSerializer(appointments, many=True).data,
+                "visit_history": AppointmentDetailSerializer(
+                    appointments, many=True, context={"request": request}
+                ).data,
             }
         )
 
@@ -413,8 +484,8 @@ class NearbyClinicsView(APIView):
         results = []
         clinics = Clinic.objects.filter(is_active=True).annotate(
             doctor_count=Count(
-                "doctors",
-                filter=Q(doctors__is_active=True),
+                "doctor_clinics__doctor",
+                filter=Q(doctor_clinics__doctor__is_active=True),
                 distinct=True,
             )
         )
@@ -467,8 +538,12 @@ class PatientClinicDetailView(APIView):
             return Response({"detail": "Clinic not found."}, status=404)
 
         doctors = (
-            DoctorProfile.objects.filter(is_active=True, clinic=clinic)
+            DoctorProfile.objects.filter(
+                is_active=True,
+                doctor_clinics__clinic=clinic,
+            )
             .prefetch_related("specialities")
+            .distinct()
             .order_by("first_name", "last_name")
         )
         speciality_map = {}

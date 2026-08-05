@@ -5,11 +5,17 @@ import string
 from datetime import date, time
 
 from django.core.cache import cache
-from django.utils import timezone
 
 from appointments.models import Appointment
-from appointments.services import book_token, format_clock, upcoming_available_dates
-from catalog.models import DoctorAvailability, DoctorProfile, Speciality
+from appointments.services import (
+    book_token,
+    format_clock,
+    generate_slots_for_windows,
+    pakistan_now,
+    pakistan_today,
+    upcoming_available_dates,
+)
+from catalog.models import Clinic, DoctorAvailability, DoctorProfile, Speciality
 from patients.models import PatientProfile
 
 from .models import WhatsAppSession
@@ -110,19 +116,32 @@ def _active_doctors_all():
     )
 
 
-def _format_availability(doctor: DoctorProfile) -> str:
-    slots = list(
-        DoctorAvailability.objects.filter(doctor=doctor, is_active=True).order_by(
-            "weekday", "start_time"
+def _doctor_clinics(doctor: DoctorProfile) -> list[Clinic]:
+    return list(
+        Clinic.objects.filter(
+            is_active=True,
+            doctor_clinics__doctor=doctor,
         )
+        .distinct()
+        .order_by("name")
     )
+
+
+def _format_availability(doctor: DoctorProfile, clinic: Clinic | None = None) -> str:
+    qs = DoctorAvailability.objects.filter(
+        doctor=doctor, is_active=True, clinic__isnull=False
+    )
+    if clinic is not None:
+        qs = qs.filter(clinic=clinic)
+    slots = list(qs.order_by("weekday", "start_time"))
     if not slots:
         return "Weekly schedule: Not set yet."
 
-    lines = ["Weekly schedule:"]
+    lines = ["Weekly schedule (Pakistan time):"]
     for slot in slots:
+        clinic_label = f" @ {slot.clinic.name}" if slot.clinic_id and clinic is None else ""
         lines.append(
-            f"• {slot.get_weekday_display()}: "
+            f"• {slot.get_weekday_display()}{clinic_label}: "
             f"{format_clock(slot.start_time)} – {format_clock(slot.end_time)}"
         )
     return "\n".join(lines)
@@ -130,22 +149,71 @@ def _format_availability(doctor: DoctorProfile) -> str:
 
 def _upcoming_available_dates(
     doctor: DoctorProfile,
+    clinic: Clinic,
     *,
     days_ahead: int = 21,
     limit: int = 10,
 ) -> list[dict]:
-    return upcoming_available_dates(doctor, days_ahead=days_ahead, limit=limit)
+    return upcoming_available_dates(
+        doctor, clinic=clinic, days_ahead=days_ahead, limit=limit
+    )
 
 
-def _format_date_options(doctor: DoctorProfile, options: list[dict]) -> str:
+def _format_clinics(clinics: list[Clinic]) -> str:
+    lines = ["Select a clinic (reply with number):"]
+    for i, c in enumerate(clinics, start=1):
+        area = ", ".join(p for p in [c.area, c.city] if p)
+        suffix = f" — {area}" if area else ""
+        lines.append(f"{i}. {c.name}{suffix}")
+    lines.append("\nReply 0 to cancel.")
+    return "\n".join(lines)
+
+
+def _format_date_options(
+    doctor: DoctorProfile,
+    clinic: Clinic,
+    options: list[dict],
+) -> str:
     lines = [
         f"Dr. {doctor.full_name}",
-        _format_availability(doctor),
+        f"Clinic: {clinic.name}",
+        _format_availability(doctor, clinic),
         "",
         "Select a date (reply with number):",
     ]
     for i, opt in enumerate(options, start=1):
         lines.append(f"{i}. {opt['label']} ({opt['timing']})")
+    lines.append("\nReply 0 to cancel.")
+    return "\n".join(lines)
+
+
+def _open_slot_options(doctor: DoctorProfile, option: dict) -> list[dict]:
+    windows = option.get("windows") or [
+        {"start": option["start"], "end": option["end"]}
+    ]
+    booked = set(option.get("booked_times") or [])
+    is_today = option["date"] == pakistan_today().isoformat()
+    now = pakistan_now().time()
+    slots = []
+    for slot in generate_slots_for_windows(windows, doctor.session_time):
+        key = slot.strftime("%H:%M:%S")
+        if key in booked:
+            continue
+        if is_today and slot <= now:
+            continue
+        slots.append(
+            {
+                "time": key,
+                "label": format_clock(slot),
+            }
+        )
+    return slots
+
+
+def _format_slot_options(options: list[dict]) -> str:
+    lines = ["Select a time slot (Pakistan time) — reply with number:"]
+    for i, opt in enumerate(options, start=1):
+        lines.append(f"{i}. {opt['label']}")
     lines.append("\nReply 0 to cancel.")
     return "\n".join(lines)
 
@@ -171,39 +239,32 @@ def _format_doctors(items: list[DoctorProfile]) -> str:
 
 
 def _format_appointments(patient: PatientProfile) -> str:
-    today = timezone.localdate()
+    today = pakistan_today()
     appts = (
         Appointment.objects.filter(
             patient=patient,
             status=Appointment.Status.UPCOMING,
             token_date__gte=today,
         )
-        .select_related("doctor")
+        .select_related("doctor", "clinic")
         .order_by("token_date", "token_number")[:10]
     )
     if not appts:
         return "No upcoming appointments."
 
+    from zoneinfo import ZoneInfo
+
+    karachi = ZoneInfo("Asia/Karachi")
     lines = ["Your upcoming appointments:"]
     for a in appts:
         when = a.token_date.strftime("%d %b %Y")
-        lines.append(f"• Token {a.token_code} — Dr. {a.doctor.full_name} — {when}")
+        local_t = a.scheduled_at.astimezone(karachi).time()
+        clinic = f" @ {a.clinic.name}" if a.clinic_id else ""
+        lines.append(
+            f"• Token {a.token_code} — Dr. {a.doctor.full_name}{clinic} — "
+            f"{when} {format_clock(local_t)}"
+        )
     return "\n".join(lines)
-
-
-def _book_token_for_date(
-    patient: PatientProfile,
-    doctor: DoctorProfile,
-    token_date: date,
-    start_time: time | None = None,
-) -> Appointment:
-    return book_token(
-        patient,
-        doctor,
-        token_date,
-        start_time,
-        notes="Booked via WhatsApp",
-    )
 
 
 def _reset_to_menu(session: WhatsAppSession) -> None:
@@ -247,27 +308,96 @@ def _offer_doctors(
     client.send_text(phone, f"{speciality.name}\n\n{_format_doctors(doctors)}")
 
 
-def _prompt_date_selection(
+def _prompt_clinic_selection(
     session: WhatsAppSession,
     client,
     phone: str,
     doctor: DoctorProfile,
 ) -> None:
-    options = _upcoming_available_dates(doctor)
+    clinics = _doctor_clinics(doctor)
+    if not clinics:
+        client.send_text(
+            phone,
+            f"Dr. {doctor.full_name} has no clinic schedule yet.\n\n{MENU_TEXT}",
+        )
+        _reset_to_menu(session)
+        return
+    if len(clinics) == 1:
+        _prompt_date_selection(session, client, phone, doctor, clinics[0])
+        return
+    session.state = WhatsAppSession.State.AWAITING_CLINIC
+    session.context = {
+        "doctor_id": doctor.id,
+        "clinic_ids": [c.id for c in clinics],
+    }
+    session.save(update_fields=["state", "context", "updated_at"])
+    client.send_text(
+        phone,
+        f"Dr. {doctor.full_name}\n\n{_format_clinics(clinics)}",
+    )
+
+
+def _prompt_date_selection(
+    session: WhatsAppSession,
+    client,
+    phone: str,
+    doctor: DoctorProfile,
+    clinic: Clinic,
+) -> None:
+    options = _upcoming_available_dates(doctor, clinic)
     if not options:
         client.send_text(
             phone,
-            f"Dr. {doctor.full_name} has no upcoming available dates.\n\n{MENU_TEXT}",
+            f"Dr. {doctor.full_name} has no upcoming dates at {clinic.name}.\n\n{MENU_TEXT}",
         )
         _reset_to_menu(session)
         return
     session.state = WhatsAppSession.State.AWAITING_DATE
     session.context = {
         "doctor_id": doctor.id,
+        "clinic_id": clinic.id,
         "date_options": options,
     }
     session.save(update_fields=["state", "context", "updated_at"])
-    client.send_text(phone, _format_date_options(doctor, options))
+    client.send_text(phone, _format_date_options(doctor, clinic, options))
+
+
+def _prompt_slot_selection(
+    session: WhatsAppSession,
+    client,
+    phone: str,
+    doctor: DoctorProfile,
+    clinic: Clinic,
+    option: dict,
+) -> None:
+    slots = _open_slot_options(doctor, option)
+    if not slots:
+        client.send_text(
+            phone,
+            "No open time slots on that date. Pick another date.\n\n"
+            + _format_date_options(
+                doctor, clinic, session.context.get("date_options") or [option]
+            ),
+        )
+        session.state = WhatsAppSession.State.AWAITING_DATE
+        session.save(update_fields=["state", "updated_at"])
+        return
+    session.state = WhatsAppSession.State.AWAITING_SLOT
+    session.context = {
+        **session.context,
+        "doctor_id": doctor.id,
+        "clinic_id": clinic.id,
+        "token_date": option["date"],
+        "date_label": option["label"],
+        "timing": option["timing"],
+        "start": option["start"],
+        "slot_options": slots,
+    }
+    session.save(update_fields=["state", "context", "updated_at"])
+    client.send_text(
+        phone,
+        f"{option['label']} @ {clinic.name}\n\n{_format_slot_options(slots)}",
+    )
 
 
 def _prompt_confirm(
@@ -275,16 +405,26 @@ def _prompt_confirm(
     client,
     phone: str,
     doctor: DoctorProfile,
-    option: dict,
+    clinic: Clinic,
+    *,
+    date_label: str,
+    token_date: str,
+    slot_time: str,
+    slot_label: str,
+    timing: str,
 ) -> None:
     specs = ", ".join(s.name for s in doctor.specialities.filter(is_active=True)) or "—"
     session.state = WhatsAppSession.State.AWAITING_CONFIRM
     session.context = {
         "doctor_id": doctor.id,
-        "token_date": option["date"],
-        "start": option["start"],
-        "timing": option["timing"],
-        "date_label": option["label"],
+        "clinic_id": clinic.id,
+        "token_date": token_date,
+        "slot_time": slot_time,
+        "slot_label": slot_label,
+        "start": slot_time,
+        "timing": timing,
+        "date_label": date_label,
+        "clinic_name": clinic.name,
     }
     session.save(update_fields=["state", "context", "updated_at"])
     client.send_text(
@@ -292,8 +432,9 @@ def _prompt_confirm(
         "Confirm booking:\n"
         f"Doctor: Dr. {doctor.full_name}\n"
         f"Speciality: {specs}\n"
-        f"Date: {option['label']}\n"
-        f"Timing: {option['timing']}\n"
+        f"Clinic: {clinic.name}\n"
+        f"Date: {date_label}\n"
+        f"Time: {slot_label} (Pakistan)\n"
         f"Session: {doctor.session_time} min\n\n"
         "Reply YES to confirm.\n"
         "Reply 0 to cancel.",
@@ -400,7 +541,7 @@ def handle_inbound_message(msg: dict, client) -> None:
             speciality_match = _resolve_speciality_choice(text, ordered)
             if speciality_match is None:
                 if len(doctor_matches) == 1:
-                    _prompt_date_selection(session, client, phone, doctor_matches[0])
+                    _prompt_clinic_selection(session, client, phone, doctor_matches[0])
                     return
                 client.send_text(
                     phone,
@@ -459,10 +600,31 @@ def handle_inbound_message(msg: dict, client) -> None:
             session.context = {**session.context, "doctor_ids": [d.id for d in resolved]}
             session.save(update_fields=["context", "updated_at"])
             return
-        _prompt_date_selection(session, client, phone, resolved)
+        _prompt_clinic_selection(session, client, phone, resolved)
         return
 
-    # Date selection from doctor's availability
+    if session.state == WhatsAppSession.State.AWAITING_CLINIC:
+        if choice in ("0", "cancel", "menu"):
+            _reset_to_menu(session)
+            client.send_text(phone, MENU_TEXT)
+            return
+        doctor_id = session.context.get("doctor_id")
+        clinic_ids = session.context.get("clinic_ids") or []
+        doctor = DoctorProfile.objects.filter(id=doctor_id, is_active=True).first()
+        clinics = list(Clinic.objects.filter(id__in=clinic_ids, is_active=True))
+        by_id = {c.id: c for c in clinics}
+        ordered = [by_id[i] for i in clinic_ids if i in by_id]
+        if not doctor or not ordered:
+            _reset_to_menu(session)
+            client.send_text(phone, "Session expired. Please book again.\n\n" + MENU_TEXT)
+            return
+        idx = _parse_choice_index(text, len(ordered))
+        if idx is None:
+            client.send_text(phone, "Invalid choice.\n\n" + _format_clinics(ordered))
+            return
+        _prompt_date_selection(session, client, phone, doctor, ordered[idx])
+        return
+
     if session.state == WhatsAppSession.State.AWAITING_DATE:
         if choice in ("0", "cancel", "menu"):
             _reset_to_menu(session)
@@ -470,16 +632,54 @@ def handle_inbound_message(msg: dict, client) -> None:
             return
         options = session.context.get("date_options") or []
         doctor_id = session.context.get("doctor_id")
+        clinic_id = session.context.get("clinic_id")
         doctor = DoctorProfile.objects.filter(id=doctor_id, is_active=True).first()
-        if not doctor or not options:
+        clinic = Clinic.objects.filter(id=clinic_id, is_active=True).first()
+        if not doctor or not clinic or not options:
             _reset_to_menu(session)
             client.send_text(phone, "Session expired. Please book again.\n\n" + MENU_TEXT)
             return
         idx = _parse_choice_index(text, len(options))
         if idx is None:
-            client.send_text(phone, "Invalid choice.\n\n" + _format_date_options(doctor, options))
+            client.send_text(
+                phone,
+                "Invalid choice.\n\n" + _format_date_options(doctor, clinic, options),
+            )
             return
-        _prompt_confirm(session, client, phone, doctor, options[idx])
+        _prompt_slot_selection(session, client, phone, doctor, clinic, options[idx])
+        return
+
+    if session.state == WhatsAppSession.State.AWAITING_SLOT:
+        if choice in ("0", "cancel", "menu"):
+            _reset_to_menu(session)
+            client.send_text(phone, MENU_TEXT)
+            return
+        slots = session.context.get("slot_options") or []
+        doctor_id = session.context.get("doctor_id")
+        clinic_id = session.context.get("clinic_id")
+        doctor = DoctorProfile.objects.filter(id=doctor_id, is_active=True).first()
+        clinic = Clinic.objects.filter(id=clinic_id, is_active=True).first()
+        if not doctor or not clinic or not slots:
+            _reset_to_menu(session)
+            client.send_text(phone, "Session expired. Please book again.\n\n" + MENU_TEXT)
+            return
+        idx = _parse_choice_index(text, len(slots))
+        if idx is None:
+            client.send_text(phone, "Invalid choice.\n\n" + _format_slot_options(slots))
+            return
+        picked = slots[idx]
+        _prompt_confirm(
+            session,
+            client,
+            phone,
+            doctor,
+            clinic,
+            date_label=session.context.get("date_label", ""),
+            token_date=session.context.get("token_date", ""),
+            slot_time=picked["time"],
+            slot_label=picked["label"],
+            timing=session.context.get("timing", ""),
+        )
         return
 
     if session.state == WhatsAppSession.State.AWAITING_CONFIRM:
@@ -489,36 +689,52 @@ def handle_inbound_message(msg: dict, client) -> None:
             return
         if choice not in ("1", "yes", "y", "confirm", "ok", "book"):
             doctor_id = session.context.get("doctor_id")
+            clinic_id = session.context.get("clinic_id")
             doctor = DoctorProfile.objects.filter(id=doctor_id, is_active=True).first()
-            token_date = session.context.get("token_date")
-            if doctor and token_date:
-                option = {
-                    "date": token_date,
-                    "label": session.context.get("date_label", token_date),
-                    "start": session.context.get("start", "09:00:00"),
-                    "timing": session.context.get("timing", ""),
-                }
-                _prompt_confirm(session, client, phone, doctor, option)
+            clinic = Clinic.objects.filter(id=clinic_id, is_active=True).first()
+            if doctor and clinic and session.context.get("slot_time"):
+                _prompt_confirm(
+                    session,
+                    client,
+                    phone,
+                    doctor,
+                    clinic,
+                    date_label=session.context.get("date_label", ""),
+                    token_date=session.context.get("token_date", ""),
+                    slot_time=session.context["slot_time"],
+                    slot_label=session.context.get("slot_label", ""),
+                    timing=session.context.get("timing", ""),
+                )
             else:
                 _reset_to_menu(session)
                 client.send_text(phone, "Session expired. Please book again.\n\n" + MENU_TEXT)
             return
 
         doctor_id = session.context.get("doctor_id")
+        clinic_id = session.context.get("clinic_id")
         token_date_raw = session.context.get("token_date")
-        start_raw = session.context.get("start") or "09:00:00"
+        slot_raw = session.context.get("slot_time")
         doctor = DoctorProfile.objects.filter(id=doctor_id, is_active=True).first()
-        if not doctor or not token_date_raw:
+        clinic = Clinic.objects.filter(id=clinic_id, is_active=True).first()
+        if not doctor or not clinic or not token_date_raw or not slot_raw:
             _reset_to_menu(session)
             client.send_text(phone, "Doctor unavailable.\n\n" + MENU_TEXT)
             return
 
         token_date = date.fromisoformat(token_date_raw)
-        start_parts = [int(x) for x in start_raw.split(":")[:3]]
-        start_time = time(*start_parts)
+        slot_parts = [int(x) for x in slot_raw.split(":")[:3]]
+        slot_time = time(*slot_parts)
 
         try:
-            appt = _book_token_for_date(patient, doctor, token_date, start_time)
+            appt = book_token(
+                patient,
+                doctor,
+                token_date,
+                slot_time,
+                slot_time=slot_time,
+                clinic=clinic,
+                notes="Booked via WhatsApp",
+            )
         except ValueError as exc:
             _reset_to_menu(session)
             client.send_text(phone, f"{exc}\n\n{MENU_TEXT}")
@@ -530,14 +746,15 @@ def handle_inbound_message(msg: dict, client) -> None:
             return
 
         when = appt.token_date.strftime("%d %b %Y")
-        timing = session.context.get("timing") or ""
+        slot_label = session.context.get("slot_label") or format_clock(slot_time)
         _reset_to_menu(session)
         client.send_text(
             phone,
             "Booked!\n"
             f"Doctor: Dr. {doctor.full_name}\n"
+            f"Clinic: {clinic.name}\n"
             f"Date: {when}\n"
-            f"Timing: {timing}\n"
+            f"Time: {slot_label} (Pakistan)\n"
             f"Your token: {appt.token_code}\n\n"
             "Show this token at the clinic.\n\n"
             f"{MENU_TEXT}",

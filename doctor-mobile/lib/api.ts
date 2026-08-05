@@ -2,16 +2,15 @@ import { storage } from "./storage";
 import type {
   Appointment,
   AvailabilitySlot,
-  ClinicalNote,
   ClinicFormPayload,
   DashboardStats,
   DoctorClinic,
   DoctorPatientDetail,
   DoctorPatientSummary,
   DoctorProfile,
-  Prescription,
   ScheduleSlotInput,
   UserInfo,
+  VisitAttachment,
 } from "./types";
 
 const API_URL = (
@@ -185,17 +184,41 @@ export const api = {
       method: "POST",
     }),
 
-  saveClinicalNote: (id: number, note: ClinicalNote) =>
-    request<ClinicalNote>(`/api/doctor/appointments/${id}/clinical/`, {
-      method: "PUT",
-      body: JSON.stringify(note),
-    }),
+  uploadAttachment: async (
+    id: number,
+    payload: {
+      kind: "image" | "voice";
+      uri: string;
+      name?: string;
+      mimeType?: string;
+      durationSeconds?: number;
+    },
+  ) => {
+    const form = new FormData();
+    form.append("kind", payload.kind);
+    if (payload.durationSeconds != null) {
+      form.append("duration_seconds", String(payload.durationSeconds));
+    }
+    form.append("file", {
+      uri: payload.uri,
+      name:
+        payload.name ||
+        (payload.kind === "image" ? "photo.jpg" : "voice.m4a"),
+      type:
+        payload.mimeType ||
+        (payload.kind === "image" ? "image/jpeg" : "audio/m4a"),
+    } as unknown as Blob);
+    return request<VisitAttachment>(
+      `/api/doctor/appointments/${id}/attachments/`,
+      { method: "POST", body: form },
+    );
+  },
 
-  savePrescription: (id: number, prescription: Prescription) =>
-    request<Prescription>(`/api/doctor/appointments/${id}/prescription/`, {
-      method: "PUT",
-      body: JSON.stringify(prescription),
-    }),
+  deleteAttachment: (appointmentId: number, attachmentId: number) =>
+    request<void>(
+      `/api/doctor/appointments/${appointmentId}/attachments/${attachmentId}/`,
+      { method: "DELETE" },
+    ),
 
   patients: () => request<DoctorPatientSummary[]>("/api/doctor/patients/"),
 

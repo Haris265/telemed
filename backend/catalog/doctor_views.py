@@ -2,17 +2,19 @@ from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, status
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsDoctor
-from appointments.models import Appointment, ClinicalNote, Prescription
+from appointments.models import Appointment, ClinicalNote, Prescription, VisitAttachment
 from appointments.serializers import (
     AppointmentDetailSerializer,
     AppointmentSerializer,
     ClinicalNoteSerializer,
     DoctorAppointmentStatusSerializer,
     PrescriptionSerializer,
+    VisitAttachmentSerializer,
 )
 from patients.models import PatientProfile
 
@@ -25,15 +27,79 @@ from .serializers import (
     DoctorProfileSerializer,
 )
 
+IMAGE_MIMES = {"image/jpeg", "image/jpg", "image/png", "image/webp"}
+VOICE_MIMES = {
+    "audio/m4a",
+    "audio/mp4",
+    "audio/mpeg",
+    "audio/aac",
+    "audio/wav",
+    "audio/x-wav",
+    "audio/webm",
+    "audio/3gpp",
+    "audio/ogg",
+    "application/octet-stream",
+}
+
 
 def get_doctor_appointment(doctor: DoctorProfile, pk: int) -> Appointment:
     return get_object_or_404(
-        Appointment.objects.select_related("patient", "doctor")
-        .prefetch_related("prescription__items")
+        Appointment.objects.select_related("patient", "doctor", "clinic")
+        .prefetch_related("prescription__items", "attachments")
         .select_related("clinical_note"),
         pk=pk,
         doctor=doctor,
     )
+
+
+def _send_attachments_via_whatsapp(appointment: Appointment) -> None:
+    """Soft-fail WhatsApp delivery of visit attachments to the patient."""
+    import logging
+
+    from whatsapp.meta_client import MetaWhatsAppClient
+
+    logger = logging.getLogger(__name__)
+    attachments = list(
+        appointment.attachments.filter(sent_via_whatsapp=False).order_by("created_at")
+    )
+    if not attachments:
+        return
+
+    phone = "".join(ch for ch in (appointment.patient.phone or "") if ch.isdigit())
+    if not phone:
+        logger.warning(
+            "No patient phone for appointment %s; skip WA media", appointment.id
+        )
+        return
+
+    client = MetaWhatsAppClient()
+    doctor_name = appointment.doctor.full_name
+    token = appointment.token_code
+    client.send_text(
+        phone,
+        f"Visit media from Dr. {doctor_name} (Token {token}).",
+    )
+    for att in attachments:
+        try:
+            path = att.file.path
+        except Exception:
+            logger.exception("Attachment %s has no local path", att.id)
+            continue
+        mime = att.mime_type or ""
+        media_id = client.upload_media(path, mime)
+        if att.kind == VisitAttachment.Kind.IMAGE:
+            result = client.send_image(
+                phone,
+                media_id=media_id,
+                caption=f"Dr. {doctor_name} — {token}",
+            )
+        else:
+            result = client.send_audio(phone, media_id=media_id)
+        if not result.get("error"):
+            att.sent_via_whatsapp = True
+            att.save(update_fields=["sent_via_whatsapp"])
+        else:
+            logger.error("WA send failed for attachment %s: %s", att.id, result)
 
 
 class DoctorMeView(APIView):
@@ -280,10 +346,13 @@ class DoctorAppointmentDetailView(APIView):
 
     def get(self, request, pk):
         appointment = get_doctor_appointment(request.user.doctor_profile, pk)
-        return Response(AppointmentDetailSerializer(appointment).data)
+        return Response(
+            AppointmentDetailSerializer(appointment, context={"request": request}).data
+        )
 
     def patch(self, request, pk):
         appointment = get_doctor_appointment(request.user.doctor_profile, pk)
+        prev_status = appointment.status
         serializer = DoctorAppointmentStatusSerializer(
             appointment, data=request.data, partial=True
         )
@@ -297,7 +366,23 @@ class DoctorAppointmentDetailView(APIView):
         ):
             appointment.visit_ended_at = timezone.now()
             appointment.save(update_fields=["visit_ended_at", "updated_at"])
-        return Response(AppointmentDetailSerializer(appointment).data)
+        if (
+            appointment.status == Appointment.Status.COMPLETED
+            and prev_status != Appointment.Status.COMPLETED
+        ):
+            try:
+                _send_attachments_via_whatsapp(appointment)
+            except Exception:
+                import logging
+
+                logging.getLogger(__name__).exception(
+                    "WhatsApp attachment delivery failed for appointment %s",
+                    appointment.id,
+                )
+        appointment = get_doctor_appointment(request.user.doctor_profile, pk)
+        return Response(
+            AppointmentDetailSerializer(appointment, context={"request": request}).data
+        )
 
 
 class DoctorAppointmentStartVisitView(APIView):
@@ -317,7 +402,9 @@ class DoctorAppointmentStartVisitView(APIView):
             )
         appointment.visit_started_at = timezone.now()
         appointment.save(update_fields=["visit_started_at", "updated_at"])
-        return Response(AppointmentDetailSerializer(appointment).data)
+        return Response(
+            AppointmentDetailSerializer(appointment, context={"request": request}).data
+        )
 
 
 class DoctorAppointmentEndVisitView(APIView):
@@ -337,7 +424,103 @@ class DoctorAppointmentEndVisitView(APIView):
             )
         appointment.visit_ended_at = timezone.now()
         appointment.save(update_fields=["visit_ended_at", "updated_at"])
-        return Response(AppointmentDetailSerializer(appointment).data)
+        return Response(
+            AppointmentDetailSerializer(appointment, context={"request": request}).data
+        )
+
+
+class DoctorAppointmentAttachmentListCreateView(APIView):
+    permission_classes = [IsDoctor]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get(self, request, pk):
+        appointment = get_doctor_appointment(request.user.doctor_profile, pk)
+        data = VisitAttachmentSerializer(
+            appointment.attachments.all(),
+            many=True,
+            context={"request": request},
+        ).data
+        return Response(data)
+
+    def post(self, request, pk):
+        appointment = get_doctor_appointment(request.user.doctor_profile, pk)
+        if appointment.status not in (
+            Appointment.Status.UPCOMING,
+            Appointment.Status.COMPLETED,
+        ):
+            return Response(
+                {"detail": "Cannot attach media to this visit."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        kind = (request.data.get("kind") or "").strip().lower()
+        upload = request.FILES.get("file")
+        if kind not in (VisitAttachment.Kind.IMAGE, VisitAttachment.Kind.VOICE):
+            return Response(
+                {"kind": "Must be 'image' or 'voice'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not upload:
+            return Response(
+                {"file": "File is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        mime = (upload.content_type or "").lower()
+        if kind == VisitAttachment.Kind.IMAGE and mime not in IMAGE_MIMES:
+            # Some clients omit mime — allow by extension
+            name = (upload.name or "").lower()
+            if not name.endswith((".jpg", ".jpeg", ".png", ".webp")):
+                return Response(
+                    {"file": "Image must be JPEG, PNG, or WebP."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            mime = mime or "image/jpeg"
+        if kind == VisitAttachment.Kind.VOICE and mime not in VOICE_MIMES:
+            name = (upload.name or "").lower()
+            if not name.endswith((".m4a", ".mp4", ".mp3", ".aac", ".wav", ".webm", ".ogg", ".3gp")):
+                return Response(
+                    {"file": "Unsupported audio format."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            mime = mime or "audio/m4a"
+
+        duration = request.data.get("duration_seconds")
+        duration_int = None
+        if duration not in (None, ""):
+            try:
+                duration_int = max(0, int(duration))
+            except (TypeError, ValueError):
+                return Response(
+                    {"duration_seconds": "Must be an integer."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        att = VisitAttachment.objects.create(
+            appointment=appointment,
+            kind=kind,
+            file=upload,
+            original_name=upload.name or "",
+            mime_type=mime,
+            duration_seconds=duration_int,
+        )
+        return Response(
+            VisitAttachmentSerializer(att, context={"request": request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class DoctorAppointmentAttachmentDetailView(APIView):
+    permission_classes = [IsDoctor]
+
+    def delete(self, request, pk, attachment_id):
+        appointment = get_doctor_appointment(request.user.doctor_profile, pk)
+        att = get_object_or_404(
+            VisitAttachment, pk=attachment_id, appointment=appointment
+        )
+        if att.file:
+            att.file.delete(save=False)
+        att.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class DoctorClinicalNoteView(APIView):
@@ -458,7 +641,7 @@ class DoctorPatientDetailView(APIView):
         appointments = (
             Appointment.objects.filter(doctor=doctor, patient=patient)
             .select_related("patient", "doctor")
-            .prefetch_related("prescription__items")
+            .prefetch_related("prescription__items", "attachments")
             .select_related("clinical_note")
             .order_by("-token_date", "-token_number")
         )
@@ -511,7 +694,7 @@ class DoctorPatientDetailView(APIView):
                     AppointmentSerializer(next_upcoming).data if next_upcoming else None
                 ),
                 "visit_history": AppointmentDetailSerializer(
-                    appointments, many=True
+                    appointments, many=True, context={"request": request}
                 ).data,
             }
         )

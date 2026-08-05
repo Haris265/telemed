@@ -8,7 +8,9 @@ class WhatsAppSession(models.Model):
         AWAITING_OTP = "awaiting_otp", "Awaiting OTP"
         AWAITING_SPECIALITY = "awaiting_speciality", "Awaiting Speciality"
         AWAITING_DOCTOR = "awaiting_doctor", "Awaiting Doctor"
+        AWAITING_CLINIC = "awaiting_clinic", "Awaiting Clinic"
         AWAITING_DATE = "awaiting_date", "Awaiting Date"
+        AWAITING_SLOT = "awaiting_slot", "Awaiting Slot"
         AWAITING_CONFIRM = "awaiting_confirm", "Awaiting Confirm"
         MENU = "menu", "Menu"
 

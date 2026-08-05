@@ -2,7 +2,7 @@ from django.db import models
 from django.db.models import UniqueConstraint
 from django.utils import timezone
 
-from catalog.models import DoctorProfile
+from catalog.models import Clinic, DoctorProfile
 from patients.models import PatientProfile
 
 
@@ -21,6 +21,13 @@ class Appointment(models.Model):
     doctor = models.ForeignKey(
         DoctorProfile,
         on_delete=models.CASCADE,
+        related_name="appointments",
+    )
+    clinic = models.ForeignKey(
+        Clinic,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name="appointments",
     )
     scheduled_at = models.DateTimeField()
@@ -122,3 +129,28 @@ class PrescriptionItem(models.Model):
 
     def __str__(self):
         return self.medicine_name
+
+
+class VisitAttachment(models.Model):
+    class Kind(models.TextChoices):
+        IMAGE = "image", "Image"
+        VOICE = "voice", "Voice"
+
+    appointment = models.ForeignKey(
+        Appointment,
+        on_delete=models.CASCADE,
+        related_name="attachments",
+    )
+    kind = models.CharField(max_length=16, choices=Kind.choices)
+    file = models.FileField(upload_to="visit_attachments/")
+    original_name = models.CharField(max_length=255, blank=True, default="")
+    mime_type = models.CharField(max_length=100, blank=True, default="")
+    duration_seconds = models.PositiveIntegerField(null=True, blank=True)
+    sent_via_whatsapp = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return f"{self.kind} for {self.appointment.token_code}"
