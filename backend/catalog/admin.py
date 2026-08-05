@@ -1,6 +1,13 @@
 from django.contrib import admin
 
-from .models import Clinic, DoctorAvailability, DoctorProfile, DoctorSubscription, Speciality
+from .models import (
+    Clinic,
+    DoctorAvailability,
+    DoctorClinic,
+    DoctorProfile,
+    DoctorSubscription,
+    Speciality,
+)
 
 
 @admin.register(Speciality)
@@ -14,6 +21,18 @@ class ClinicAdmin(admin.ModelAdmin):
     list_display = ("name", "city", "phone", "is_active", "created_at")
     list_filter = ("is_active", "city")
     search_fields = ("name", "address", "city", "phone")
+
+
+@admin.register(DoctorClinic)
+class DoctorClinicAdmin(admin.ModelAdmin):
+    list_display = ("doctor", "clinic", "is_primary", "created_at")
+    list_filter = ("is_primary",)
+    search_fields = (
+        "doctor__first_name",
+        "doctor__last_name",
+        "clinic__name",
+    )
+    raw_id_fields = ("doctor", "clinic")
 
 
 @admin.register(DoctorProfile)
@@ -42,5 +61,6 @@ class DoctorSubscriptionAdmin(admin.ModelAdmin):
 
 @admin.register(DoctorAvailability)
 class DoctorAvailabilityAdmin(admin.ModelAdmin):
-    list_display = ("doctor", "weekday", "start_time", "end_time", "is_active")
+    list_display = ("doctor", "clinic", "weekday", "start_time", "end_time", "is_active")
     list_filter = ("weekday", "is_active")
+    raw_id_fields = ("doctor", "clinic")

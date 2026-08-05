@@ -67,6 +67,10 @@ function ThemedRoot() {
               name="patient/[uuid]"
               options={{ headerShown: true, title: "Patient" }}
             />
+            <Stack.Screen
+              name="clinic/[id]"
+              options={{ headerShown: true, title: "Clinic schedule" }}
+            />
           </Stack>
         </Gate>
       </AuthProvider>

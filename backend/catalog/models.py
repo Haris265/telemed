@@ -140,6 +140,32 @@ class DoctorSubscription(models.Model):
         return self.is_active and self.start_date <= today <= self.end_date
 
 
+class DoctorClinic(models.Model):
+    """Links a doctor to clinics they practice at (supports multiple clinics)."""
+
+    doctor = models.ForeignKey(
+        DoctorProfile,
+        on_delete=models.CASCADE,
+        related_name="doctor_clinics",
+    )
+    clinic = models.ForeignKey(
+        Clinic,
+        on_delete=models.CASCADE,
+        related_name="doctor_clinics",
+    )
+    is_primary = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        unique_together = ("doctor", "clinic")
+        verbose_name = "doctor clinic"
+        verbose_name_plural = "doctor clinics"
+
+    def __str__(self):
+        return f"{self.doctor} @ {self.clinic}"
+
+
 class DoctorAvailability(models.Model):
     class Weekday(models.IntegerChoices):
         MONDAY = 0, "Monday"
@@ -155,6 +181,13 @@ class DoctorAvailability(models.Model):
         on_delete=models.CASCADE,
         related_name="availabilities",
     )
+    clinic = models.ForeignKey(
+        Clinic,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="availabilities",
+    )
     weekday = models.IntegerField(choices=Weekday.choices)
     start_time = models.TimeField()
     end_time = models.TimeField()
@@ -166,4 +199,8 @@ class DoctorAvailability(models.Model):
         verbose_name_plural = "doctor availabilities"
 
     def __str__(self):
-        return f"{self.doctor} — {self.get_weekday_display()} {self.start_time}-{self.end_time}"
+        clinic = f" @ {self.clinic}" if self.clinic_id else ""
+        return (
+            f"{self.doctor}{clinic} — {self.get_weekday_display()} "
+            f"{self.start_time}-{self.end_time}"
+        )

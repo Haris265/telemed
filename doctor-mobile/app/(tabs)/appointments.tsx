@@ -124,8 +124,10 @@ export default function AppointmentsScreen() {
       StyleSheet.create({
         scroll: { paddingBottom: 32 },
         header: { paddingHorizontal: 16, paddingTop: 4 },
-        tools: { paddingHorizontal: 16, gap: 14, marginTop: 16 },
+        tools: { paddingLeft: 16, gap: 14, marginTop: 16 },
+        searchPad: { paddingRight: 16 },
         list: { paddingHorizontal: 16, gap: 10, marginTop: 4 },
+        summaryPad: { paddingRight: 16 },
         group: { marginBottom: 18, gap: 8 },
         groupTitle: {
           color: colors.text,
@@ -174,8 +176,8 @@ export default function AppointmentsScreen() {
   const filterOptions: FilterOption[] = [
     { id: "today", label: "Today", icon: "today-outline", count: counts.today },
     { id: "future", label: "Future", icon: "calendar-outline", count: counts.future },
-    { id: "all", label: "All upcoming", icon: "layers-outline", count: counts.all },
-    { id: "completed", label: "Completed", icon: "checkmark-circle-outline", count: counts.completed },
+    { id: "all", label: "Upcoming", icon: "layers-outline", count: counts.all },
+    { id: "completed", label: "Done", icon: "checkmark-circle-outline", count: counts.completed },
     { id: "rejected", label: "Rejected", icon: "close-circle-outline", count: counts.rejected },
   ];
 
@@ -203,16 +205,20 @@ export default function AppointmentsScreen() {
         </View>
 
         <View style={styles.tools}>
-          <SearchField value={search} onChangeText={setSearch} />
+          <View style={styles.searchPad}>
+            <SearchField value={search} onChangeText={setSearch} />
+          </View>
           <FilterChips
             options={filterOptions}
             selectedId={filter}
             onSelect={(id) => setFilter(id as Filter)}
           />
-          <ResultSummary
-            label={resultLabel}
-            hint={FILTER_HINTS[filter]}
-          />
+          <View style={styles.summaryPad}>
+            <ResultSummary
+              label={resultLabel}
+              hint={FILTER_HINTS[filter]}
+            />
+          </View>
         </View>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}

@@ -1,10 +1,22 @@
 from datetime import time
+from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from rest_framework import serializers
 
-from .models import Clinic, DoctorAvailability, DoctorProfile, DoctorSubscription, Speciality
+from .models import (
+    Clinic,
+    DoctorAvailability,
+    DoctorClinic,
+    DoctorProfile,
+    DoctorSubscription,
+    Speciality,
+)
+
+# Default map pin (Karachi center) when doctor creates a clinic without GPS.
+DEFAULT_CLINIC_LAT = Decimal("24.860700")
+DEFAULT_CLINIC_LNG = Decimal("67.001100")
 
 User = get_user_model()
 
@@ -208,11 +220,14 @@ class DoctorSubscriptionSerializer(serializers.ModelSerializer):
 
 class DoctorAvailabilitySerializer(serializers.ModelSerializer):
     weekday_display = serializers.CharField(source="get_weekday_display", read_only=True)
+    clinic_name = serializers.CharField(source="clinic.name", read_only=True, default=None)
 
     class Meta:
         model = DoctorAvailability
         fields = (
             "id",
+            "clinic",
+            "clinic_name",
             "weekday",
             "weekday_display",
             "start_time",
@@ -229,3 +244,122 @@ class DoctorAvailabilitySerializer(serializers.ModelSerializer):
         if start and end and end != time(0, 0) and start >= end:
             raise serializers.ValidationError("end_time must be after start_time.")
         return attrs
+
+
+class DoctorClinicSerializer(serializers.ModelSerializer):
+    clinic = ClinicSerializer(read_only=True)
+    schedule_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DoctorClinic
+        fields = (
+            "id",
+            "clinic",
+            "is_primary",
+            "schedule_count",
+            "created_at",
+        )
+        read_only_fields = ("created_at",)
+
+    def get_schedule_count(self, obj):
+        return obj.clinic.availabilities.filter(doctor=obj.doctor, is_active=True).count()
+
+
+class DoctorClinicCreateSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=200)
+    address = serializers.CharField(max_length=300)
+    city = serializers.CharField(max_length=100, required=False, allow_blank=True, default="")
+    area = serializers.CharField(max_length=100, required=False, allow_blank=True, default="")
+    phone = serializers.CharField(max_length=30, required=False, allow_blank=True, default="")
+    latitude = serializers.DecimalField(
+        max_digits=9, decimal_places=6, required=False, default=DEFAULT_CLINIC_LAT
+    )
+    longitude = serializers.DecimalField(
+        max_digits=9, decimal_places=6, required=False, default=DEFAULT_CLINIC_LNG
+    )
+    is_primary = serializers.BooleanField(required=False, default=False)
+
+    def validate_latitude(self, value):
+        value = Decimal(str(value))
+        if value < Decimal("-90") or value > Decimal("90"):
+            raise serializers.ValidationError("latitude must be between -90 and 90.")
+        return value
+
+    def validate_longitude(self, value):
+        value = Decimal(str(value))
+        if value < Decimal("-180") or value > Decimal("180"):
+            raise serializers.ValidationError("longitude must be between -180 and 180.")
+        return value
+
+    @transaction.atomic
+    def create(self, validated_data):
+        doctor: DoctorProfile = self.context["doctor"]
+        is_primary = validated_data.pop("is_primary", False)
+        clinic = Clinic.objects.create(**validated_data)
+
+        if is_primary or not doctor.doctor_clinics.exists():
+            doctor.doctor_clinics.filter(is_primary=True).update(is_primary=False)
+            is_primary = True
+            doctor.clinic = clinic
+            doctor.save(update_fields=["clinic"])
+
+        link = DoctorClinic.objects.create(
+            doctor=doctor,
+            clinic=clinic,
+            is_primary=is_primary,
+        )
+        return link
+
+
+class DoctorClinicUpdateSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=200, required=False)
+    address = serializers.CharField(max_length=300, required=False)
+    city = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    area = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    phone = serializers.CharField(max_length=30, required=False, allow_blank=True)
+    latitude = serializers.DecimalField(max_digits=9, decimal_places=6, required=False)
+    longitude = serializers.DecimalField(max_digits=9, decimal_places=6, required=False)
+    is_active = serializers.BooleanField(required=False)
+    is_primary = serializers.BooleanField(required=False)
+
+    def validate_latitude(self, value):
+        value = Decimal(str(value))
+        if value < Decimal("-90") or value > Decimal("90"):
+            raise serializers.ValidationError("latitude must be between -90 and 90.")
+        return value
+
+    def validate_longitude(self, value):
+        value = Decimal(str(value))
+        if value < Decimal("-180") or value > Decimal("180"):
+            raise serializers.ValidationError("longitude must be between -180 and 180.")
+        return value
+
+    @transaction.atomic
+    def update(self, instance: DoctorClinic, validated_data):
+        clinic = instance.clinic
+        clinic_fields = (
+            "name",
+            "address",
+            "city",
+            "area",
+            "phone",
+            "latitude",
+            "longitude",
+            "is_active",
+        )
+        for field in clinic_fields:
+            if field in validated_data:
+                setattr(clinic, field, validated_data[field])
+        clinic.save()
+
+        if "is_primary" in validated_data and validated_data["is_primary"]:
+            instance.doctor.doctor_clinics.exclude(pk=instance.pk).update(is_primary=False)
+            instance.is_primary = True
+            instance.doctor.clinic = clinic
+            instance.doctor.save(update_fields=["clinic"])
+            instance.save(update_fields=["is_primary"])
+        elif "is_primary" in validated_data and not validated_data["is_primary"]:
+            instance.is_primary = False
+            instance.save(update_fields=["is_primary"])
+
+        return instance

@@ -23,7 +23,14 @@ export function FilterChips({ options, selectedId, onSelect }: Props) {
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      contentContainerStyle={{ gap: 8, paddingVertical: 2 }}
+      nestedScrollEnabled
+      style={{ flexGrow: 0, overflow: "visible" }}
+      contentContainerStyle={{
+        gap: 8,
+        paddingVertical: 4,
+        paddingRight: 24,
+        alignItems: "center",
+      }}
     >
       {options.map((opt) => {
         const active = opt.id === selectedId;
@@ -35,6 +42,7 @@ export function FilterChips({ options, selectedId, onSelect }: Props) {
               {
                 flexDirection: "row",
                 alignItems: "center",
+                flexShrink: 0,
                 gap: 6,
                 borderWidth: 1,
                 borderColor: active ? colors.primary : colors.border,
@@ -42,8 +50,9 @@ export function FilterChips({ options, selectedId, onSelect }: Props) {
                   ? "rgba(15,118,110,0.12)"
                   : colors.surface,
                 borderRadius: 999,
-                paddingHorizontal: 14,
-                paddingVertical: 9,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                minHeight: 40,
                 opacity: pressed ? 0.85 : 1,
               },
             ]}
@@ -56,10 +65,12 @@ export function FilterChips({ options, selectedId, onSelect }: Props) {
               />
             ) : null}
             <Text
+              numberOfLines={1}
               style={{
                 color: active ? colors.primary : colors.muted,
                 fontSize: 13,
                 fontFamily: fonts.sansSemi,
+                flexShrink: 0,
               }}
             >
               {opt.label}
@@ -99,15 +110,7 @@ export function FilterChips({ options, selectedId, onSelect }: Props) {
 export function ResultSummary({ label, hint }: { label: string; hint?: string }) {
   const { colors, fonts } = useTheme();
   return (
-    <View
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "space-between",
-        marginTop: 4,
-        marginBottom: 8,
-      }}
-    >
+    <View style={{ gap: 4, marginTop: 4, marginBottom: 8 }}>
       <Text
         style={{
           color: colors.text,
@@ -123,6 +126,7 @@ export function ResultSummary({ label, hint }: { label: string; hint?: string })
             color: colors.muted,
             fontSize: 12,
             fontFamily: fonts.sansSemi,
+            lineHeight: 16,
           }}
         >
           {hint}

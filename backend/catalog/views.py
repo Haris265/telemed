@@ -221,10 +221,39 @@ class DoctorAvailabilityListCreateView(generics.ListCreateAPIView):
         return self.request.user.doctor_profile
 
     def get_queryset(self):
-        return DoctorAvailability.objects.filter(doctor=self.get_doctor())
+        qs = DoctorAvailability.objects.filter(doctor=self.get_doctor())
+        clinic_id = self.request.query_params.get("clinic")
+        if clinic_id:
+            qs = qs.filter(clinic_id=clinic_id)
+        return qs.select_related("clinic")
 
     def perform_create(self, serializer):
-        serializer.save(doctor=self.get_doctor())
+        doctor = self.get_doctor()
+        clinic = serializer.validated_data.get("clinic")
+        if clinic and not doctor.doctor_clinics.filter(clinic=clinic).exists():
+            from rest_framework.exceptions import ValidationError
+
+            raise ValidationError({"clinic": "You are not linked to this clinic."})
+        serializer.save(doctor=doctor)
+
+
+class DoctorAvailabilityDetailView(generics.RetrieveUpdateDestroyAPIView):
+    permission_classes = [IsDoctor]
+    serializer_class = DoctorAvailabilitySerializer
+
+    def get_queryset(self):
+        return DoctorAvailability.objects.filter(
+            doctor=self.request.user.doctor_profile
+        ).select_related("clinic")
+
+    def perform_update(self, serializer):
+        doctor = self.request.user.doctor_profile
+        clinic = serializer.validated_data.get("clinic")
+        if clinic is not None and not doctor.doctor_clinics.filter(clinic=clinic).exists():
+            from rest_framework.exceptions import ValidationError
+
+            raise ValidationError({"clinic": "You are not linked to this clinic."})
+        serializer.save()
 
 
 class AdminDoctorAvailabilityListView(generics.ListAPIView):

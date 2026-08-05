@@ -12,6 +12,10 @@ from .doctor_views import (
     DoctorAppointmentEndVisitView,
     DoctorAppointmentListView,
     DoctorAppointmentStartVisitView,
+    DoctorClinicAvailabilityListCreateView,
+    DoctorClinicAvailabilityReplaceView,
+    DoctorClinicDetailView,
+    DoctorClinicListCreateView,
     DoctorClinicalNoteView,
     DoctorDashboardView,
     DoctorMeView,
@@ -27,6 +31,7 @@ from .views import (
     ClinicDetailView,
     ClinicListCreateView,
     DashboardStatsView,
+    DoctorAvailabilityDetailView,
     DoctorAvailabilityListCreateView,
     DoctorDetailView,
     DoctorListView,
@@ -85,7 +90,28 @@ urlpatterns = [
 doctor_urlpatterns = [
     path("me/", DoctorMeView.as_view(), name="doctor-me"),
     path("dashboard/", DoctorDashboardView.as_view(), name="doctor-dashboard"),
+    path("clinics/", DoctorClinicListCreateView.as_view(), name="doctor-clinics"),
+    path(
+        "clinics/<int:pk>/",
+        DoctorClinicDetailView.as_view(),
+        name="doctor-clinic-detail",
+    ),
+    path(
+        "clinics/<int:pk>/availability/",
+        DoctorClinicAvailabilityListCreateView.as_view(),
+        name="doctor-clinic-availability",
+    ),
+    path(
+        "clinics/<int:pk>/availability/replace/",
+        DoctorClinicAvailabilityReplaceView.as_view(),
+        name="doctor-clinic-availability-replace",
+    ),
     path("availability/", DoctorAvailabilityListCreateView.as_view(), name="doctor-availability"),
+    path(
+        "availability/<int:pk>/",
+        DoctorAvailabilityDetailView.as_view(),
+        name="doctor-availability-detail",
+    ),
     path("appointments/", DoctorAppointmentListView.as_view(), name="doctor-appointments"),
     path(
         "appointments/<int:pk>/",

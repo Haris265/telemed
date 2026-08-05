@@ -5,6 +5,55 @@ export type Speciality = {
   is_active: boolean;
 };
 
+export type Clinic = {
+  id: number;
+  name: string;
+  address: string;
+  city: string;
+  area: string;
+  phone: string;
+  latitude: string;
+  longitude: string;
+  is_active: boolean;
+  created_at: string;
+};
+
+export type DoctorClinic = {
+  id: number;
+  clinic: Clinic;
+  is_primary: boolean;
+  schedule_count: number;
+  created_at: string;
+};
+
+export type AvailabilitySlot = {
+  id: number;
+  clinic: number | null;
+  clinic_name?: string | null;
+  weekday: number;
+  weekday_display: string;
+  start_time: string;
+  end_time: string;
+  is_active: boolean;
+  created_at: string;
+};
+
+export type ClinicFormPayload = {
+  name: string;
+  address: string;
+  city?: string;
+  area?: string;
+  phone?: string;
+  is_primary?: boolean;
+};
+
+export type ScheduleSlotInput = {
+  weekday: number;
+  start_time: string;
+  end_time: string;
+  is_active?: boolean;
+};
+
 export type DoctorProfile = {
   id: number;
   uuid: string;

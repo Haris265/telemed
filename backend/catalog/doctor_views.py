@@ -16,8 +16,14 @@ from appointments.serializers import (
 )
 from patients.models import PatientProfile
 
-from .models import DoctorProfile
-from .serializers import DoctorProfileSerializer
+from .models import DoctorAvailability, DoctorClinic, DoctorProfile
+from .serializers import (
+    DoctorAvailabilitySerializer,
+    DoctorClinicCreateSerializer,
+    DoctorClinicSerializer,
+    DoctorClinicUpdateSerializer,
+    DoctorProfileSerializer,
+)
 
 
 def get_doctor_appointment(doctor: DoctorProfile, pk: int) -> Appointment:
@@ -36,6 +42,154 @@ class DoctorMeView(APIView):
     def get(self, request):
         doctor = request.user.doctor_profile
         return Response(DoctorProfileSerializer(doctor).data)
+
+
+class DoctorClinicListCreateView(APIView):
+    permission_classes = [IsDoctor]
+
+    def get(self, request):
+        doctor = request.user.doctor_profile
+        # Ensure legacy single-clinic FK is mirrored in DoctorClinic.
+        if doctor.clinic_id and not doctor.doctor_clinics.filter(
+            clinic_id=doctor.clinic_id
+        ).exists():
+            DoctorClinic.objects.get_or_create(
+                doctor=doctor,
+                clinic_id=doctor.clinic_id,
+                defaults={"is_primary": True},
+            )
+        links = (
+            doctor.doctor_clinics.select_related("clinic")
+            .prefetch_related("clinic__availabilities")
+            .order_by("-created_at", "-id")
+        )
+        return Response(DoctorClinicSerializer(links, many=True).data)
+
+    def post(self, request):
+        doctor = request.user.doctor_profile
+        serializer = DoctorClinicCreateSerializer(
+            data=request.data, context={"doctor": doctor}
+        )
+        serializer.is_valid(raise_exception=True)
+        link = serializer.save()
+        return Response(
+            DoctorClinicSerializer(link).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class DoctorClinicDetailView(APIView):
+    permission_classes = [IsDoctor]
+
+    def get_link(self, request, pk: int) -> DoctorClinic:
+        return get_object_or_404(
+            DoctorClinic.objects.select_related("clinic"),
+            pk=pk,
+            doctor=request.user.doctor_profile,
+        )
+
+    def get(self, request, pk: int):
+        return Response(DoctorClinicSerializer(self.get_link(request, pk)).data)
+
+    def patch(self, request, pk: int):
+        link = self.get_link(request, pk)
+        serializer = DoctorClinicUpdateSerializer(link, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        link = serializer.save()
+        return Response(DoctorClinicSerializer(link).data)
+
+    def delete(self, request, pk: int):
+        link = self.get_link(request, pk)
+        doctor = request.user.doctor_profile
+        clinic = link.clinic
+        DoctorAvailability.objects.filter(doctor=doctor, clinic=clinic).delete()
+        was_primary = link.is_primary
+        link.delete()
+        if was_primary or doctor.clinic_id == clinic.id:
+            next_link = doctor.doctor_clinics.select_related("clinic").first()
+            doctor.clinic = next_link.clinic if next_link else None
+            doctor.save(update_fields=["clinic"])
+            if next_link and not next_link.is_primary:
+                next_link.is_primary = True
+                next_link.save(update_fields=["is_primary"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class DoctorClinicAvailabilityListCreateView(APIView):
+    permission_classes = [IsDoctor]
+
+    def get_link(self, request, pk: int) -> DoctorClinic:
+        return get_object_or_404(
+            DoctorClinic.objects.select_related("clinic"),
+            pk=pk,
+            doctor=request.user.doctor_profile,
+        )
+
+    def get(self, request, pk: int):
+        link = self.get_link(request, pk)
+        slots = DoctorAvailability.objects.filter(
+            doctor=link.doctor, clinic=link.clinic
+        ).order_by("weekday", "start_time")
+        return Response(DoctorAvailabilitySerializer(slots, many=True).data)
+
+    def post(self, request, pk: int):
+        link = self.get_link(request, pk)
+        data = {**request.data, "clinic": link.clinic_id}
+        serializer = DoctorAvailabilitySerializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        slot = serializer.save(doctor=link.doctor, clinic=link.clinic)
+        return Response(
+            DoctorAvailabilitySerializer(slot).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class DoctorClinicAvailabilityReplaceView(APIView):
+    """Replace full weekly schedule for a clinic in one request."""
+
+    permission_classes = [IsDoctor]
+
+    def put(self, request, pk: int):
+        link = get_object_or_404(
+            DoctorClinic.objects.select_related("clinic"),
+            pk=pk,
+            doctor=request.user.doctor_profile,
+        )
+        slots = request.data.get("slots")
+        if not isinstance(slots, list):
+            return Response(
+                {"detail": "slots must be a list."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        validated = []
+        for item in slots:
+            serializer = DoctorAvailabilitySerializer(
+                data={**item, "clinic": link.clinic_id}
+            )
+            serializer.is_valid(raise_exception=True)
+            data = serializer.validated_data
+            validated.append(
+                {
+                    "weekday": data["weekday"],
+                    "start_time": data["start_time"],
+                    "end_time": data["end_time"],
+                    "is_active": data.get("is_active", True),
+                }
+            )
+
+        DoctorAvailability.objects.filter(
+            doctor=link.doctor, clinic=link.clinic
+        ).delete()
+        objs = [
+            DoctorAvailability(doctor=link.doctor, clinic=link.clinic, **data)
+            for data in validated
+        ]
+        DoctorAvailability.objects.bulk_create(objs)
+        result = DoctorAvailability.objects.filter(
+            doctor=link.doctor, clinic=link.clinic
+        ).order_by("weekday", "start_time")
+        return Response(DoctorAvailabilitySerializer(result, many=True).data)
 
 
 class DoctorDashboardView(APIView):

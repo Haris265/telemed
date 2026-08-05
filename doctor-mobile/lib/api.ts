@@ -1,12 +1,16 @@
 import { storage } from "./storage";
 import type {
   Appointment,
+  AvailabilitySlot,
   ClinicalNote,
+  ClinicFormPayload,
   DashboardStats,
+  DoctorClinic,
   DoctorPatientDetail,
   DoctorPatientSummary,
   DoctorProfile,
   Prescription,
+  ScheduleSlotInput,
   UserInfo,
 } from "./types";
 
@@ -197,4 +201,40 @@ export const api = {
 
   patient: (uuid: string) =>
     request<DoctorPatientDetail>(`/api/doctor/patients/${uuid}/`),
+
+  clinics: () => request<DoctorClinic[]>("/api/doctor/clinics/"),
+
+  clinic: (id: number) => request<DoctorClinic>(`/api/doctor/clinics/${id}/`),
+
+  createClinic: (payload: ClinicFormPayload) =>
+    request<DoctorClinic>("/api/doctor/clinics/", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  updateClinic: (id: number, payload: Partial<ClinicFormPayload & { is_active: boolean }>) =>
+    request<DoctorClinic>(`/api/doctor/clinics/${id}/`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+
+  deleteClinic: (id: number) =>
+    request<void>(`/api/doctor/clinics/${id}/`, { method: "DELETE" }),
+
+  clinicAvailability: (clinicLinkId: number) =>
+    request<AvailabilitySlot[]>(
+      `/api/doctor/clinics/${clinicLinkId}/availability/`,
+    ),
+
+  replaceClinicAvailability: (clinicLinkId: number, slots: ScheduleSlotInput[]) =>
+    request<AvailabilitySlot[]>(
+      `/api/doctor/clinics/${clinicLinkId}/availability/replace/`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ slots }),
+      },
+    ),
+
+  deleteAvailability: (id: number) =>
+    request<void>(`/api/doctor/availability/${id}/`, { method: "DELETE" }),
 };
