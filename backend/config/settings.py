@@ -16,6 +16,12 @@ ALLOWED_HOSTS = [
     for h in os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
     if h.strip()
 ]
+CSRF_TRUSTED_ORIGINS = [
+    o.strip()
+    for o in os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",")
+    if o.strip()
+]
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -78,10 +84,12 @@ if DATABASE_URL.startswith("postgres"):
         }
     }
 else:
+    sqlite_dir = BASE_DIR / "data"
+    sqlite_dir.mkdir(parents=True, exist_ok=True)
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "db.sqlite3",
+            "NAME": sqlite_dir / "db.sqlite3",
         }
     }
 
