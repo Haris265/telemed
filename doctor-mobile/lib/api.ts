@@ -14,7 +14,7 @@ import type {
 } from "./types";
 
 const API_URL = (
-  process.env.EXPO_PUBLIC_API_URL || "http://localhost:8000"
+  process.env.EXPO_PUBLIC_API_URL || "https://telemed-api.hnhsofttechsolutions.com"
 ).replace(/\/+$/, "");
 
 const ACCESS_KEY = "telemed_doctor_access";

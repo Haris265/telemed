@@ -1,6 +1,6 @@
 /** Base API origin used by the doctor app (no trailing slash). */
 export const API_ORIGIN = (
-  process.env.EXPO_PUBLIC_API_URL || "http://localhost:8000"
+  process.env.EXPO_PUBLIC_API_URL || "https://telemed-api.hnhsofttechsolutions.com"
 ).replace(/\/+$/, "");
 
 /** Rewrite /media URLs so the device can reach the API host. */

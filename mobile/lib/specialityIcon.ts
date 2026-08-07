@@ -57,7 +57,7 @@ export function resolveIconUrl(value?: string | null) {
   if (/^https?:\/\//i.test(v) || v.startsWith("data:")) return v;
   if (v.startsWith("/")) {
     const base = (
-      process.env.EXPO_PUBLIC_API_URL || "https://zl5w76gd-8000.inc1.devtunnels.ms"
+      process.env.EXPO_PUBLIC_API_URL || "https://telemed-api.hnhsofttechsolutions.com"
     ).replace(/\/+$/, "");
     return `${base}${v}`;
   }
